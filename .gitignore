@@ -1,0 +1,21 @@
+# Binaries
+*.exe
+haive-mind
+
+# SSH host keys
+.ssh_host_key
+.ssh_host_key.pub
+
+# Data directory
+data/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
