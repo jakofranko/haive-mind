@@ -129,7 +129,13 @@ func NewHostModel(hubChans *hub.HubChannels) *HostModel {
 }
 
 func (m *HostModel) Init() tea.Cmd {
-	return m.listenForMessages()
+	return tea.Batch(
+		m.listenForMessages(),
+		m.listenForParticipantUpdates(),
+		m.listenForRoundChanges(),
+		m.listenForExportComplete(),
+		m.listenForErrors(),
+	)
 }
 
 func (m *HostModel) listenForMessages() tea.Cmd {
@@ -139,7 +145,41 @@ func (m *HostModel) listenForMessages() tea.Cmd {
 	}
 }
 
+func (m *HostModel) listenForParticipantUpdates() tea.Cmd {
+	return func() tea.Msg {
+		p := <-m.hub.ParticipantUpdateChan
+		return participantUpdateMsg(p)
+	}
+}
+
+func (m *HostModel) listenForRoundChanges() tea.Cmd {
+	return func() tea.Msg {
+		round := <-m.hub.RoundChangedChan
+		return roundChangedMsg(round)
+	}
+}
+
+func (m *HostModel) listenForExportComplete() tea.Cmd {
+	return func() tea.Msg {
+		path := <-m.hub.ExportCompleteChan
+		return exportCompleteMsg(path)
+	}
+}
+
+func (m *HostModel) listenForErrors() tea.Cmd {
+	return func() tea.Msg {
+		err := <-m.hub.ErrorChan
+		return errorMsg(err)
+	}
+}
+
 type hubMessageMsg hub.Message
+
+// Typed event messages
+type participantUpdateMsg hub.Participant
+type roundChangedMsg int
+type exportCompleteMsg string
+type errorMsg error
 
 func (m *HostModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -157,6 +197,26 @@ func (m *HostModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case hubMessageMsg:
 		m.addMessage(hub.Message(msg))
 		cmds = append(cmds, m.listenForMessages())
+		return m, tea.Batch(cmds...)
+
+	case participantUpdateMsg:
+		m.updateParticipant(hub.Participant(msg))
+		cmds = append(cmds, m.listenForParticipantUpdates())
+		return m, tea.Batch(cmds...)
+
+	case roundChangedMsg:
+		m.round = int(msg)
+		cmds = append(cmds, m.listenForRoundChanges())
+		return m, tea.Batch(cmds...)
+
+	case exportCompleteMsg:
+		m.addSystemMessage("Exported to " + string(msg))
+		cmds = append(cmds, m.listenForExportComplete())
+		return m, tea.Batch(cmds...)
+
+	case errorMsg:
+		m.addSystemMessage("Error: " + msg.Error())
+		cmds = append(cmds, m.listenForErrors())
 		return m, tea.Batch(cmds...)
 	}
 
@@ -235,7 +295,8 @@ func (m *HostModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 	}
 
 	msg := hub.NewMessage(hub.MessageTypeDirective, "host", content, m.round)
-	m.hub.Outbound <- msg
+	m.hub.Outbound <- msg // For local transcript display
+	m.hub.SendChan <- msg // For hub to send to agents
 	m.addMessage(*msg)
 
 	m.directiveInput.Reset()
@@ -247,14 +308,16 @@ func (m *HostModel) handleButtonPress() (tea.Model, tea.Cmd) {
 	if m.activePane == paneButtons && m.buttonIndex < len(buttons) {
 		switch buttons[m.buttonIndex] {
 		case "Aggregate":
-			// TODO: Send via typed channel in Phase 4
+			m.hub.AggregateChan <- m.round
 		case "Send":
 			return m.handleDirectiveSend()
 		case "New Round":
 			m.round++
-			// TODO: Send via typed channel in Phase 4
+			m.hub.NewRoundChan <- m.round
 		case "Export":
-			// TODO: Send via typed channel in Phase 4
+			// Generate export path with timestamp
+			exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
+			m.hub.ExportChan <- exportPath
 		}
 	}
 	return m, nil

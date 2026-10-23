@@ -55,15 +55,3 @@ type Participant struct {
 	Status ParticipantStatus `json:"status"`
 	Round  int               `json:"round"`
 }
-
-type HubChannels struct {
-	Inbound  chan *Message
-	Outbound chan *Message
-}
-
-func NewHubChannels() *HubChannels {
-	return &HubChannels{
-		Inbound:  make(chan *Message, 100),
-		Outbound: make(chan *Message, 100),
-	}
-}
