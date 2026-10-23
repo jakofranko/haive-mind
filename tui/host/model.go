@@ -1,12 +1,12 @@
 package host
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -23,18 +23,17 @@ const (
 )
 
 type HostModel struct {
-	hub          *hub.HubChannels
-	width        int
-	height       int
-	activePane   int
-	buttonIndex  int
-	transcript   viewport.Model
-	participants []hub.Participant
-	directive    string
-	directiveVP  viewport.Model
-	round        int
-	renderer     *glamour.TermRenderer
-	styles       Styles
+	hub            *hub.HubChannels
+	width          int
+	height         int
+	activePane     int
+	buttonIndex    int
+	transcript     viewport.Model
+	participants   []hub.Participant
+	directiveInput textarea.Model
+	round          int
+	renderer       *glamour.TermRenderer
+	styles         Styles
 }
 
 type Styles struct {
@@ -104,17 +103,21 @@ func NewHostModel(hubChans *hub.HubChannels) *HostModel {
 	transcriptVP := viewport.New(0, 0)
 	transcriptVP.SetContent("Welcome to Haive Mind Host TUI\nPress Tab to navigate panes")
 
-	directiveVP := viewport.New(0, 0)
-	directiveVP.SetContent("")
+	directiveInput := textarea.New()
+	directiveInput.Placeholder = "Type directive here..."
+	directiveInput.Focus()
+	directiveInput.KeyMap.InsertNewline.SetEnabled(true)
+	directiveInput.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("ctrl+enter"))
+	directiveInput.ShowLineNumbers = false
 
 	m := &HostModel{
-		hub:         hubChans,
-		activePane:  paneTranscript,
-		transcript:  transcriptVP,
-		directiveVP: directiveVP,
-		round:       1,
-		renderer:    renderer,
-		styles:      defaultStyles(),
+		hub:            hubChans,
+		activePane:     paneTranscript,
+		transcript:     transcriptVP,
+		directiveInput: directiveInput,
+		round:          1,
+		renderer:       renderer,
+		styles:         defaultStyles(),
 		participants: []hub.Participant{
 			{Name: "Agent-1", Status: hub.StatusIdle, Round: 0},
 			{Name: "Agent-2", Status: hub.StatusIdle, Round: 0},
@@ -156,7 +159,7 @@ func (m *HostModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.resizePanes()
+		m.layout()
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
@@ -177,96 +180,81 @@ func (m *HostModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.transcript, cmd = m.transcript.Update(msg)
 	cmds = append(cmds, cmd)
 
-	m.directiveVP, cmd = m.directiveVP.Update(msg)
+	// Always update directive input (it handles its own focus)
+	m.directiveInput, cmd = m.directiveInput.Update(msg)
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
 
 func (m *HostModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	keyStr := msg.String()
+
+	// Global pane navigation
+	switch keyStr {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 
 	case "tab":
 		m.activePane = (m.activePane + 1) % numPanes
-		m.updateBorderStyles()
 		return m, nil
 
 	case "shift+tab":
 		m.activePane = (m.activePane - 1 + numPanes) % numPanes
-		m.updateBorderStyles()
 		return m, nil
+	}
 
-	case "enter":
-		if m.activePane == paneDirective {
+	// Pane-specific handling
+	switch m.activePane {
+	case paneDirective:
+		// Intercept Enter (without Ctrl) to send directive
+		// Let textarea handle all other keys including Ctrl+Enter for newlines
+		if keyStr == "enter" && !isCtrlPressed(msg) {
 			return m.handleDirectiveSend()
 		}
-		if m.activePane == paneButtons {
+		// Let textarea handle the key
+		var cmd tea.Cmd
+		m.directiveInput, cmd = m.directiveInput.Update(msg)
+		return m, cmd
+
+	case paneButtons:
+		if keyStr == "enter" {
 			return m.handleButtonPress()
 		}
-
-	case "ctrl+enter":
-		if m.activePane == paneDirective {
-			m.directive += "\n"
-			m.directiveVP.SetContent(m.directive)
-			m.directiveVP.GotoBottom()
-		}
 		return m, nil
 
-	case "up", "k":
-		if m.activePane == paneParticipants {
-			// Could add participant selection logic here
-		}
-		if m.activePane == paneButtons {
-			// Button navigation - up does nothing for horizontal buttons
-		}
-		return m, nil
-
-	case "down", "j":
-		if m.activePane == paneParticipants {
-			// Could add participant selection logic here
-		}
-		if m.activePane == paneButtons {
-			// Button navigation - down does nothing for horizontal buttons
-		}
-		return m, nil
-
-	case "left", "h":
-		if m.activePane == paneButtons && m.buttonIndex > 0 {
-			m.buttonIndex--
-		}
-		return m, nil
-
-	case "right", "l":
-		if m.activePane == paneButtons && m.buttonIndex < 3 {
-			m.buttonIndex++
-		}
-		return m, nil
-	}
-
-	var cmd tea.Cmd
-	switch m.activePane {
 	case paneTranscript:
+		var cmd tea.Cmd
 		m.transcript, cmd = m.transcript.Update(msg)
-	case paneDirective:
-		m.directiveVP, cmd = m.directiveVP.Update(msg)
+		return m, cmd
+
+	case paneParticipants:
+		// Participants pane is read-only for now
+		return m, nil
 	}
 
-	return m, cmd
+	return m, nil
+}
+
+// isCtrlPressed checks if Ctrl modifier is held (for Enter vs Ctrl+Enter)
+func isCtrlPressed(msg tea.KeyMsg) bool {
+	// Check if the key message has Ctrl modifier
+	// tea.KeyMsg doesn't expose modifiers directly, so we check the string
+	// For Ctrl+Enter, the string representation is typically "ctrl+enter"
+	return strings.HasPrefix(msg.String(), "ctrl+")
 }
 
 func (m *HostModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
-	if strings.TrimSpace(m.directive) == "" {
+	content := strings.TrimSpace(m.directiveInput.Value())
+	if content == "" {
 		return m, nil
 	}
 
-	msg := hub.NewMessage(hub.MessageTypeDirective, "host", m.directive, m.round)
+	msg := hub.NewMessage(hub.MessageTypeDirective, "host", content, m.round)
 	m.hub.Outbound <- msg
 	m.addMessage(*msg)
 
-	m.directive = ""
-	m.directiveVP.SetContent("")
+	m.directiveInput.Reset()
 	return m, nil
 }
 
@@ -340,23 +328,19 @@ func (m *HostModel) updateParticipant(updated hub.Participant) {
 	}
 }
 
-func (m *HostModel) resizePanes() {
+func (m *HostModel) layout() {
 	transcriptHeight := m.height/2 - 4
 	directiveHeight := 6
 
 	m.transcript.Width = m.width/2 - 2
 	m.transcript.Height = transcriptHeight
 
-	m.directiveVP.Width = m.width/2 - 2
-	m.directiveVP.Height = directiveHeight
-}
-
-func (m *HostModel) updateBorderStyles() {
-	// Border styles are handled in View()
+	m.directiveInput.SetWidth(m.width/2 - 2)
+	m.directiveInput.SetHeight(directiveHeight)
 }
 
 func (m *HostModel) View() string {
-	m.updatePaneSizes()
+	m.layout()
 
 	leftPane := m.renderTranscriptPane()
 	rightTop := m.renderParticipantsPane()
@@ -365,15 +349,6 @@ func (m *HostModel) View() string {
 
 	rightPane := lipgloss.JoinVertical(lipgloss.Left, rightTop, rightMid, rightBottom)
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
-}
-
-func (m *HostModel) updatePaneSizes() {
-	transcriptHeight := m.height/2 - 4
-	m.transcript.Width = m.width/2 - 4
-	m.transcript.Height = transcriptHeight
-
-	m.directiveVP.Width = m.width/2 - 4
-	m.directiveVP.Height = 4
 }
 
 func (m *HostModel) renderTranscriptPane() string {
@@ -422,10 +397,7 @@ func (m *HostModel) renderDirectivePane() string {
 	}
 
 	title := m.styles.title.Render("Directive (Enter=Send, Ctrl+Enter=Newline)")
-	content := m.directiveVP.View()
-	if content == "" {
-		content = m.styles.directiveInput.Render("Type directive here...")
-	}
+	content := m.directiveInput.View()
 	return border.Width(m.width/2 - 2).Height(8).Render(title + "\n" + content)
 }
 
@@ -449,26 +421,4 @@ func (m *HostModel) renderButtonsPane() string {
 
 	content := strings.Join(buttons, " ")
 	return border.Width(m.width/2 - 2).Height(6).Render(title + "\n" + content)
-}
-
-func (m *HostModel) ExportTranscript(path string) error {
-	content := m.transcript.View()
-	data := map[string]interface{}{
-		"round":        m.round,
-		"participants": m.participants,
-		"transcript":   content,
-		"timestamp":    time.Now(),
-	}
-	jsonData, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, jsonData, 0644)
-}
-
-// HandleCtrlEnter adds a newline to the directive (for testing)
-func (m *HostModel) HandleCtrlEnter() {
-	m.directive += "\n"
-	m.directiveVP.SetContent(m.directive)
-	m.directiveVP.GotoBottom()
 }
