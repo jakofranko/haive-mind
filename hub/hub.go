@@ -1,9 +1,12 @@
 package hub
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -235,4 +238,144 @@ func (h *Hub) GetSession(id string) (Session, bool) {
 // generateID generates a unique ID using atomic counter
 func generateID() string {
 	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), atomic.AddUint64(&idCounter, 1))
+}
+
+// Aggregate runs the synthesis prompt via opencode run and returns the aggregated result
+func (h *Hub) Aggregate(ctx context.Context, sessionID, question string) (string, error) {
+	h.mu.RLock()
+	session, ok := h.sessions[sessionID]
+	h.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("session %q not found", sessionID)
+	}
+
+	h.mu.RLock()
+	responses := h.responses[sessionID]
+	h.mu.RUnlock()
+
+	if len(responses) == 0 {
+		return "", errors.New("no responses to aggregate")
+	}
+
+	// Build the synthesis prompt
+	prompt := h.buildSynthesisPrompt(question, responses)
+
+	// Run opencode with the synthesis prompt
+	cmd := exec.CommandContext(ctx, "opencode", "run", prompt)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("opencode run failed: %w", err)
+	}
+
+	aggregated := strings.TrimSpace(string(output))
+
+	// Store the aggregated result in the current round
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	key := roundKey(sessionID, session.Round)
+	if round, ok := h.rounds[key]; ok {
+		round.Aggregated = aggregated
+	}
+
+	return aggregated, nil
+}
+
+// buildSynthesisPrompt builds the synthesis prompt template
+func (h *Hub) buildSynthesisPrompt(question string, responses []Response) string {
+	var builder strings.Builder
+	builder.WriteString("Original question:\n")
+	builder.WriteString(question)
+	builder.WriteString("\n\nParticipant responses:\n")
+
+	for _, r := range responses {
+		participant, ok := h.GetParticipant(r.ParticipantID)
+		name := r.ParticipantID
+		if ok {
+			name = participant.Name
+		}
+		builder.WriteString(fmt.Sprintf("\n%s (%s):\n%s", name, r.ParticipantID, r.Content))
+	}
+
+	builder.WriteString("\n\nInstruction: Reconcile the above responses into a single coherent answer. Identify areas of agreement and disagreement. Produce a unified response that captures the key insights from all participants.")
+	return builder.String()
+}
+
+// MarkConflict marks a conflict between the specified participants in the current round
+func (h *Hub) MarkConflict(sessionID string, participantIDs []string) (*Conflict, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	session, ok := h.sessions[sessionID]
+	if !ok {
+		return nil, fmt.Errorf("session %q not found", sessionID)
+	}
+
+	key := roundKey(sessionID, session.Round)
+	round, ok := h.rounds[key]
+	if !ok {
+		return nil, errors.New("no active round")
+	}
+
+	if round.Conflict != nil {
+		return nil, errors.New("conflict already exists for this round")
+	}
+
+	conflict := &Conflict{
+		ID:             generateID(),
+		SessionID:      sessionID,
+		Round:          session.Round,
+		ParticipantIDs: participantIDs,
+		DetectedAt:     time.Now(),
+		Status:         ConflictStatusDetected,
+	}
+	round.Conflict = conflict
+
+	return conflict, nil
+}
+
+// ResolveConflict resolves the conflict in the current round with the given resolution
+func (h *Hub) ResolveConflict(sessionID, resolution string) (*Conflict, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	session, ok := h.sessions[sessionID]
+	if !ok {
+		return nil, fmt.Errorf("session %q not found", sessionID)
+	}
+
+	key := roundKey(sessionID, session.Round)
+	round, ok := h.rounds[key]
+	if !ok {
+		return nil, errors.New("no active round")
+	}
+
+	if round.Conflict == nil {
+		return nil, errors.New("no conflict to resolve")
+	}
+
+	now := time.Now()
+	round.Conflict.Status = ConflictStatusResolved
+	round.Conflict.ResolvedAt = &now
+	round.Conflict.Resolution = resolution
+
+	return round.Conflict, nil
+}
+
+// GetConflict returns the conflict for the current round, if any
+func (h *Hub) GetConflict(sessionID string) (*Conflict, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	session, ok := h.sessions[sessionID]
+	if !ok {
+		return nil, false
+	}
+
+	key := roundKey(sessionID, session.Round)
+	round, ok := h.rounds[key]
+	if !ok || round.Conflict == nil {
+		return nil, false
+	}
+
+	return round.Conflict, true
 }

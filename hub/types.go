@@ -68,7 +68,30 @@ type Round struct {
 	StartedAt   time.Time
 	CompletedAt *time.Time
 	Responses   []Response
+	Conflict    *Conflict
+	Aggregated  string
 }
+
+// Conflict represents a conflict between participant responses
+type Conflict struct {
+	ID              string
+	SessionID       string
+	Round           int
+	ParticipantIDs  []string
+	DetectedAt      time.Time
+	ResolvedAt      *time.Time
+	Resolution      string
+	Status          ConflictStatus
+}
+
+// ConflictStatus represents the status of a conflict
+type ConflictStatus string
+
+const (
+	ConflictStatusDetected  ConflictStatus = "detected"
+	ConflictStatusResolved  ConflictStatus = "resolved"
+	ConflictStatusDismissed ConflictStatus = "dismissed"
+)
 
 // RoundStatus represents the status of a round
 type RoundStatus string
