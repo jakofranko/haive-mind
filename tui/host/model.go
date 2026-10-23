@@ -310,32 +310,31 @@ func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 }
 
 func (m *AppModel) layout() {
-	transcriptHeight := m.height/2 - 2
-	directiveHeight := 8
-	buttonsHeight := 6
-	participantsHeight := m.height - transcriptHeight - directiveHeight - buttonsHeight - 2
+	leftWidth := m.width / 2
+	rightWidth := m.width - leftWidth
 
-	// Left pane (transcript) - full height
-	m.transcript.SetSize(m.width/2, m.height)
+	// Left: transcript full height
+	m.transcript.SetSize(leftWidth, m.height)
 
-	// Right panes - stacked vertically
-	rightWidth := m.width / 2
-	m.participants.SetSize(rightWidth, participantsHeight)
-	m.directive.SetSize(rightWidth, directiveHeight)
-	m.buttons.SetSize(rightWidth, buttonsHeight)
+	// Right: 3 equal panes
+	rightPaneHeight := (m.height - 4) / 3
+	if rightPaneHeight < 4 {
+		rightPaneHeight = 4
+	}
+
+	m.participants.SetSize(rightWidth, rightPaneHeight)
+	m.directive.SetSize(rightWidth, rightPaneHeight)
+	m.buttons.SetSize(rightWidth, rightPaneHeight)
 }
 
 func (m *AppModel) View() string {
 	m.layout()
 
-	// Left: Transcript (full height)
-	leftPane := m.transcript.View()
-
-	// Right: stacked Participants, Directive, Buttons
-	rightTop := m.participants.View()
-	rightMid := m.directive.View()
-	rightBottom := m.buttons.View()
+	rightWidth := m.width - m.width/2
+	rightTop := lipgloss.NewStyle().Width(rightWidth).Render(m.participants.View())
+	rightMid := lipgloss.NewStyle().Width(rightWidth).Render(m.directive.View())
+	rightBottom := lipgloss.NewStyle().Width(rightWidth).Render(m.buttons.View())
 
 	rightPane := lipgloss.JoinVertical(lipgloss.Left, rightTop, rightMid, rightBottom)
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
+	return lipgloss.JoinHorizontal(lipgloss.Top, m.transcript.View(), rightPane)
 }

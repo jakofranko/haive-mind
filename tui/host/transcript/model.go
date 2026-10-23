@@ -86,8 +86,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) layout() {
-	m.viewport.Width = m.width - 2
-	m.viewport.Height = m.height - 4
+	// Border (2) + title (1) + padding (2) = 5 lines overhead
+	// Border left/right (2) + padding (2) = 4 cols overhead
+	m.viewport.Width = m.width - 4
+	m.viewport.Height = m.height - 5
+	if m.viewport.Width < 10 {
+		m.viewport.Width = 10
+	}
+	if m.viewport.Height < 5 {
+		m.viewport.Height = 5
+	}
 }
 
 func (m *Model) addMessage(msg hub.Message) {
@@ -108,7 +116,7 @@ func (m Model) View() string {
 
 	title := m.styles.title.Render("Transcript")
 	content := m.viewport.View()
-	return border.Width(m.width).Height(m.height).Render(title + "\n" + content)
+	return border.Render(title + "\n" + content)
 }
 
 func (m *Model) SetActive(active bool) {

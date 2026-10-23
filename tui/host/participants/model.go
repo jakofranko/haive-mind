@@ -115,7 +115,7 @@ func (m Model) View() string {
 	}
 
 	content := strings.Join(items, "\n")
-	return border.Width(m.width).Height(m.height).Render(title + "\n" + content)
+	return border.Render(title + "\n" + content)
 }
 
 func (m *Model) SetActive(active bool) {

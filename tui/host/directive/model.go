@@ -78,8 +78,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) layout() {
-	m.input.SetWidth(m.width - 2)
-	m.input.SetHeight(6)
+	// Border (2) + title (1) + padding (2) = 5 lines overhead
+	// Border left/right (2) + padding (2) = 4 cols overhead
+	m.input.SetWidth(m.width - 4)
+	m.input.SetHeight(m.height - 5)
+	if m.input.Width() < 10 {
+		m.input.SetWidth(10)
+	}
+	if m.input.Height() < 3 {
+		m.input.SetHeight(3)
+	}
 }
 
 func (m Model) View() string {
@@ -90,7 +98,7 @@ func (m Model) View() string {
 
 	title := m.styles.title.Render("Directive (Enter=Send, Ctrl+Enter=Newline)")
 	content := m.input.View()
-	return border.Width(m.width).Height(m.height).Render(title + "\n" + content)
+	return border.Render(title + "\n" + content)
 }
 
 func (m *Model) SetActive(active bool) {
