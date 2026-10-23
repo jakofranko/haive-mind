@@ -8,84 +8,84 @@ import (
 	"jakofranko/haive-mind/hub"
 )
 
-func TestHostModel_Init(t *testing.T) {
+func TestAppModel_Init(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	assert.NotNil(t, model)
 	assert.Equal(t, paneTranscript, model.activePane)
 	assert.Equal(t, 1, model.round)
-	assert.Len(t, model.participants, 3)
+	assert.Len(t, model.participants.GetParticipants(), 3)
 }
 
-func TestHostModel_Update_WindowSize(t *testing.T) {
+func TestAppModel_Update_WindowSize(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	msg := tea.WindowSizeMsg{Width: 120, Height: 40}
 	updatedModel, _ := model.Update(msg)
 
-	assert.Equal(t, 120, updatedModel.(*HostModel).width)
-	assert.Equal(t, 40, updatedModel.(*HostModel).height)
+	assert.Equal(t, 120, updatedModel.(*AppModel).width)
+	assert.Equal(t, 40, updatedModel.(*AppModel).height)
 }
 
-func TestHostModel_Update_TabNavigation(t *testing.T) {
+func TestAppModel_Update_TabNavigation(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	// Initial pane should be transcript
 	assert.Equal(t, paneTranscript, model.activePane)
 
 	// Tab to participants
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 	assert.Equal(t, paneParticipants, model.activePane)
 
 	// Tab to directive
 	updatedModel, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 	assert.Equal(t, paneDirective, model.activePane)
 
 	// Tab to buttons
 	updatedModel, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 	assert.Equal(t, paneButtons, model.activePane)
 
 	// Tab wraps around to transcript
 	updatedModel, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 	assert.Equal(t, paneTranscript, model.activePane)
 }
 
-func TestHostModel_Update_ShiftTabNavigation(t *testing.T) {
+func TestAppModel_Update_ShiftTabNavigation(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	// Shift+Tab from transcript should go to buttons
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 	assert.Equal(t, paneButtons, model.activePane)
 
 	// Shift+Tab from buttons should go to directive
 	updatedModel, _ = model.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 	assert.Equal(t, paneDirective, model.activePane)
 }
 
-func TestHostModel_HandleDirectiveSend(t *testing.T) {
+func TestAppModel_HandleDirectiveSend(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	// Set directive content via textarea
-	model.directiveInput.SetValue("Test directive")
+	model.directive.SetValue("Test directive")
 
 	// Press Enter in directive pane
 	model.activePane = paneDirective
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 
 	// Directive should be cleared
-	assert.Equal(t, "", model.directiveInput.Value())
+	assert.Equal(t, "", model.directive.Value())
 	// Message should be sent to outbound channel
 	select {
 	case msg := <-hubChans.Outbound:
@@ -97,21 +97,21 @@ func TestHostModel_HandleDirectiveSend(t *testing.T) {
 	}
 }
 
-func TestHostModel_HandleButtonPress_Send(t *testing.T) {
+func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	// Set directive content
-	model.directiveInput.SetValue("Test directive")
+	model.directive.SetValue("Test directive")
 
 	// Press Enter in buttons pane with Send button selected
 	model.activePane = paneButtons
-	model.buttonIndex = 1 // Send
+	model.buttons.SetButtonIndex(1) // Send
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 
 	// Directive should be cleared (sent)
-	assert.Equal(t, "", model.directiveInput.Value())
+	assert.Equal(t, "", model.directive.Value())
 	// Message should be sent to outbound channel
 	select {
 	case msg := <-hubChans.Outbound:
@@ -123,16 +123,15 @@ func TestHostModel_HandleButtonPress_Send(t *testing.T) {
 	}
 }
 
-func TestHostModel_AddMessage(t *testing.T) {
+func TestAppModel_AddMessage(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	// Set viewport dimensions so View() works
-	model.transcript.Width = 80
-	model.transcript.Height = 20
+	model.transcript.SetSize(80, 20)
 
 	msg := hub.NewMessage(hub.MessageTypeResponse, "Agent-1", "Test response", 1)
-	model.addMessage(*msg)
+	model.transcript.AddMessage(*msg)
 
 	content := model.transcript.View()
 	assert.Contains(t, content, "Agent-1")
@@ -140,20 +139,20 @@ func TestHostModel_AddMessage(t *testing.T) {
 	assert.Contains(t, content, "Round 1")
 }
 
-func TestHostModel_UpdateParticipant(t *testing.T) {
+func TestAppModel_UpdateParticipant(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	updated := hub.Participant{Name: "Agent-1", Status: hub.StatusTyping, Round: 1}
-	model.updateParticipant(updated)
+	model.participants.UpdateParticipant(updated)
 
-	assert.Equal(t, hub.StatusTyping, model.participants[0].Status)
-	assert.Equal(t, 1, model.participants[0].Round)
+	assert.Equal(t, hub.StatusTyping, model.participants.GetParticipants()[0].Status)
+	assert.Equal(t, 1, model.participants.GetParticipants()[0].Round)
 }
 
-func TestHostModel_View_RendersWithoutPanic(t *testing.T) {
+func TestAppModel_View_RendersWithoutPanic(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	// Simulate window size
 	model.width = 120
@@ -169,18 +168,18 @@ func TestHostModel_View_RendersWithoutPanic(t *testing.T) {
 	assert.Contains(t, view, "Controls")
 }
 
-func TestHostModel_CtrlEnterInDirective(t *testing.T) {
+func TestAppModel_CtrlEnterInDirective(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	model.activePane = paneDirective
-	model.directiveInput.SetValue("Line 1")
+	model.directive.SetValue("Line 1")
 
 	// Ctrl+Enter should add newline - simulate with key msg
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'\x05'}}) // Ctrl+E as proxy
-	model = updatedModel.(*HostModel)
+	model = updatedModel.(*AppModel)
 
 	// Actually test that textarea handles it - we can't easily simulate Ctrl+Enter in tests
 	// So just verify the textarea accepts the value
-	assert.Equal(t, "Line 1", model.directiveInput.Value())
+	assert.Equal(t, "Line 1", model.directive.Value())
 }

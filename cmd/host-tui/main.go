@@ -10,7 +10,7 @@ import (
 
 func main() {
 	hubChans := hub.NewHubChannels()
-	model := host.NewHostModel(hubChans)
+	model := host.NewAppModel(hubChans)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

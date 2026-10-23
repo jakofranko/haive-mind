@@ -1,17 +1,16 @@
 package host
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/host/buttons"
+	"jakofranko/haive-mind/tui/host/directive"
+	"jakofranko/haive-mind/tui/host/participants"
+	"jakofranko/haive-mind/tui/host/transcript"
 )
 
 const (
@@ -22,114 +21,48 @@ const (
 	numPanes
 )
 
-type HostModel struct {
-	hub            *hub.HubChannels
-	width          int
-	height         int
-	activePane     int
-	buttonIndex    int
-	transcript     viewport.Model
-	participants   []hub.Participant
-	directiveInput textarea.Model
-	round          int
-	renderer       *glamour.TermRenderer
-	styles         Styles
+// AppModel is the main TUI model that composes child pane models
+type AppModel struct {
+	hub        *hub.HubChannels
+	width      int
+	height     int
+	activePane int
+	round      int
+
+	// Child models
+	transcript   transcript.Model
+	participants participants.Model
+	directive    directive.Model
+	buttons      buttons.Model
 }
 
-type Styles struct {
-	base            lipgloss.Style
-	paneBorder      lipgloss.Style
-	activeBorder    lipgloss.Style
-	title           lipgloss.Style
-	participant     lipgloss.Style
-	statusIdle      lipgloss.Style
-	statusTyping    lipgloss.Style
-	statusSubmitted lipgloss.Style
-	statusReady     lipgloss.Style
-	button          lipgloss.Style
-	buttonActive    lipgloss.Style
-	directiveInput  lipgloss.Style
-}
-
-func defaultStyles() Styles {
-	return Styles{
-		base: lipgloss.NewStyle().
-			Padding(0, 1),
-		paneBorder: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")),
-		activeBorder: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")),
-		title: lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("39")).
-			Padding(0, 1),
-		participant: lipgloss.NewStyle().
-			Padding(0, 1),
-		statusIdle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")),
-		statusTyping: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("220")),
-		statusSubmitted: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("46")),
-		statusReady: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39")),
-		button: lipgloss.NewStyle().
-			Padding(0, 2).
-			Margin(0, 1).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")),
-		buttonActive: lipgloss.NewStyle().
-			Padding(0, 2).
-			Margin(0, 1).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Background(lipgloss.Color("39")).
-			Foreground(lipgloss.Color("0")),
-		directiveInput: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			Padding(0, 1),
+func NewAppModel(hubChans *hub.HubChannels) *AppModel {
+	m := &AppModel{
+		hub:          hubChans,
+		activePane:   paneTranscript,
+		round:        1,
+		transcript:   transcript.New(),
+		participants: participants.New(),
+		directive:    directive.New(),
+		buttons:      buttons.New(),
 	}
-}
 
-func NewHostModel(hubChans *hub.HubChannels) *HostModel {
-	renderer, _ := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(80),
-	)
-
-	transcriptVP := viewport.New(0, 0)
-	transcriptVP.SetContent("Welcome to Haive Mind Host TUI\nPress Tab to navigate panes")
-
-	directiveInput := textarea.New()
-	directiveInput.Placeholder = "Type directive here..."
-	directiveInput.Focus()
-	directiveInput.KeyMap.InsertNewline.SetEnabled(true)
-	directiveInput.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("ctrl+enter"))
-	directiveInput.ShowLineNumbers = false
-
-	m := &HostModel{
-		hub:            hubChans,
-		activePane:     paneTranscript,
-		transcript:     transcriptVP,
-		directiveInput: directiveInput,
-		round:          1,
-		renderer:       renderer,
-		styles:         defaultStyles(),
-		participants: []hub.Participant{
-			{Name: "Agent-1", Status: hub.StatusIdle, Round: 0},
-			{Name: "Agent-2", Status: hub.StatusIdle, Round: 0},
-			{Name: "Agent-3", Status: hub.StatusIdle, Round: 0},
-		},
-	}
+	// Set initial participants
+	m.participants.SetParticipants([]hub.Participant{
+		{Name: "Agent-1", Status: hub.StatusIdle, Round: 0},
+		{Name: "Agent-2", Status: hub.StatusIdle, Round: 0},
+		{Name: "Agent-3", Status: hub.StatusIdle, Round: 0},
+	})
 
 	return m
 }
 
-func (m *HostModel) Init() tea.Cmd {
+func (m *AppModel) Init() tea.Cmd {
 	return tea.Batch(
+		m.transcript.Init(),
+		m.participants.Init(),
+		m.directive.Init(),
+		m.buttons.Init(),
 		m.listenForMessages(),
 		m.listenForParticipantUpdates(),
 		m.listenForRoundChanges(),
@@ -138,50 +71,48 @@ func (m *HostModel) Init() tea.Cmd {
 	)
 }
 
-func (m *HostModel) listenForMessages() tea.Cmd {
+type hubMessageMsg hub.Message
+type participantUpdateMsg hub.Participant
+type roundChangedMsg int
+type exportCompleteMsg string
+type errorMsg error
+
+func (m *AppModel) listenForMessages() tea.Cmd {
 	return func() tea.Msg {
 		msg := <-m.hub.Inbound
-		return msg
+		return hubMessageMsg(*msg)
 	}
 }
 
-func (m *HostModel) listenForParticipantUpdates() tea.Cmd {
+func (m *AppModel) listenForParticipantUpdates() tea.Cmd {
 	return func() tea.Msg {
 		p := <-m.hub.ParticipantUpdateChan
 		return participantUpdateMsg(p)
 	}
 }
 
-func (m *HostModel) listenForRoundChanges() tea.Cmd {
+func (m *AppModel) listenForRoundChanges() tea.Cmd {
 	return func() tea.Msg {
 		round := <-m.hub.RoundChangedChan
 		return roundChangedMsg(round)
 	}
 }
 
-func (m *HostModel) listenForExportComplete() tea.Cmd {
+func (m *AppModel) listenForExportComplete() tea.Cmd {
 	return func() tea.Msg {
 		path := <-m.hub.ExportCompleteChan
 		return exportCompleteMsg(path)
 	}
 }
 
-func (m *HostModel) listenForErrors() tea.Cmd {
+func (m *AppModel) listenForErrors() tea.Cmd {
 	return func() tea.Msg {
 		err := <-m.hub.ErrorChan
 		return errorMsg(err)
 	}
 }
 
-type hubMessageMsg hub.Message
-
-// Typed event messages
-type participantUpdateMsg hub.Participant
-type roundChangedMsg int
-type exportCompleteMsg string
-type errorMsg error
-
-func (m *HostModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -189,49 +120,94 @@ func (m *HostModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.layout()
+		// Forward to all children
+		cmds = append(cmds, m.forwardToChildren(msg)...)
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
-		m.addMessage(hub.Message(msg))
+		m.transcript.AddMessage(hub.Message(msg))
 		cmds = append(cmds, m.listenForMessages())
 		return m, tea.Batch(cmds...)
 
 	case participantUpdateMsg:
-		m.updateParticipant(hub.Participant(msg))
+		m.participants.UpdateParticipant(hub.Participant(msg))
 		cmds = append(cmds, m.listenForParticipantUpdates())
 		return m, tea.Batch(cmds...)
 
 	case roundChangedMsg:
 		m.round = int(msg)
+		m.participants.SetRound(m.round)
 		cmds = append(cmds, m.listenForRoundChanges())
 		return m, tea.Batch(cmds...)
 
 	case exportCompleteMsg:
-		m.addSystemMessage("Exported to " + string(msg))
+		m.transcript.AddSystemMessage("Exported to " + string(msg))
 		cmds = append(cmds, m.listenForExportComplete())
 		return m, tea.Batch(cmds...)
 
 	case errorMsg:
-		m.addSystemMessage("Error: " + msg.Error())
+		m.transcript.AddSystemMessage("Error: " + msg.Error())
 		cmds = append(cmds, m.listenForErrors())
 		return m, tea.Batch(cmds...)
 	}
 
-	var cmd tea.Cmd
-	m.transcript, cmd = m.transcript.Update(msg)
-	cmds = append(cmds, cmd)
-
-	// Always update directive input (it handles its own focus)
-	m.directiveInput, cmd = m.directiveInput.Update(msg)
-	cmds = append(cmds, cmd)
-
+	// Forward unhandled messages to focused child
+	cmds = append(cmds, m.forwardToFocused(msg)...)
 	return m, tea.Batch(cmds...)
 }
 
-func (m *HostModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *AppModel) forwardToChildren(msg tea.Msg) []tea.Cmd {
+	var cmds []tea.Cmd
+	if model, cmd := m.transcript.Update(msg); cmd != nil {
+		m.transcript = model.(transcript.Model)
+		cmds = append(cmds, cmd)
+	}
+	if model, cmd := m.participants.Update(msg); cmd != nil {
+		m.participants = model.(participants.Model)
+		cmds = append(cmds, cmd)
+	}
+	if model, cmd := m.directive.Update(msg); cmd != nil {
+		m.directive = model.(directive.Model)
+		cmds = append(cmds, cmd)
+	}
+	if model, cmd := m.buttons.Update(msg); cmd != nil {
+		m.buttons = model.(buttons.Model)
+		cmds = append(cmds, cmd)
+	}
+	return cmds
+}
+
+func (m *AppModel) forwardToFocused(msg tea.Msg) []tea.Cmd {
+	var cmds []tea.Cmd
+	switch m.activePane {
+	case paneTranscript:
+		if model, cmd := m.transcript.Update(msg); cmd != nil {
+			m.transcript = model.(transcript.Model)
+			cmds = append(cmds, cmd)
+		}
+	case paneDirective:
+		if model, cmd := m.directive.Update(msg); cmd != nil {
+			m.directive = model.(directive.Model)
+			cmds = append(cmds, cmd)
+		}
+	case paneParticipants:
+		if model, cmd := m.participants.Update(msg); cmd != nil {
+			m.participants = model.(participants.Model)
+			cmds = append(cmds, cmd)
+		}
+	case paneButtons:
+		if model, cmd := m.buttons.Update(msg); cmd != nil {
+			m.buttons = model.(buttons.Model)
+			cmds = append(cmds, cmd)
+		}
+	}
+	return cmds
+}
+
+func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
 
 	// Global pane navigation
@@ -241,10 +217,12 @@ func (m *HostModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "tab":
 		m.activePane = (m.activePane + 1) % numPanes
+		m.updateActiveStates()
 		return m, nil
 
 	case "shift+tab":
 		m.activePane = (m.activePane - 1 + numPanes) % numPanes
+		m.updateActiveStates()
 		return m, nil
 	}
 
@@ -252,25 +230,33 @@ func (m *HostModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.activePane {
 	case paneDirective:
 		// Intercept Enter (without Ctrl) to send directive
-		// Let textarea handle all other keys including Ctrl+Enter for newlines
 		if keyStr == "enter" && !isCtrlPressed(msg) {
 			return m.handleDirectiveSend()
 		}
-		// Let textarea handle the key
-		var cmd tea.Cmd
-		m.directiveInput, cmd = m.directiveInput.Update(msg)
-		return m, cmd
+		// Forward to directive model
+		if model, cmd := m.directive.Update(msg); cmd != nil {
+			m.directive = model.(directive.Model)
+			return m, cmd
+		}
+		return m, nil
 
 	case paneButtons:
 		if keyStr == "enter" {
 			return m.handleButtonPress()
 		}
+		// Forward left/right to buttons model
+		if model, cmd := m.buttons.Update(msg); cmd != nil {
+			m.buttons = model.(buttons.Model)
+			return m, cmd
+		}
 		return m, nil
 
 	case paneTranscript:
-		var cmd tea.Cmd
-		m.transcript, cmd = m.transcript.Update(msg)
-		return m, cmd
+		if model, cmd := m.transcript.Update(msg); cmd != nil {
+			m.transcript = model.(transcript.Model)
+			return m, cmd
+		}
+		return m, nil
 
 	case paneParticipants:
 		// Participants pane is read-only for now
@@ -280,16 +266,19 @@ func (m *HostModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// isCtrlPressed checks if Ctrl modifier is held (for Enter vs Ctrl+Enter)
+func (m *AppModel) updateActiveStates() {
+	m.transcript.SetActive(m.activePane == paneTranscript)
+	m.participants.SetActive(m.activePane == paneParticipants)
+	m.directive.SetActive(m.activePane == paneDirective)
+	m.buttons.SetActive(m.activePane == paneButtons)
+}
+
 func isCtrlPressed(msg tea.KeyMsg) bool {
-	// Check if the key message has Ctrl modifier
-	// tea.KeyMsg doesn't expose modifiers directly, so we check the string
-	// For Ctrl+Enter, the string representation is typically "ctrl+enter"
 	return strings.HasPrefix(msg.String(), "ctrl+")
 }
 
-func (m *HostModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
-	content := strings.TrimSpace(m.directiveInput.Value())
+func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
+	content := strings.TrimSpace(m.directive.Value())
 	if content == "" {
 		return m, nil
 	}
@@ -297,150 +286,56 @@ func (m *HostModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 	msg := hub.NewMessage(hub.MessageTypeDirective, "host", content, m.round)
 	m.hub.Outbound <- msg // For local transcript display
 	m.hub.SendChan <- msg // For hub to send to agents
-	m.addMessage(*msg)
+	m.transcript.AddMessage(*msg)
 
-	m.directiveInput.Reset()
+	m.directive.Reset()
 	return m, nil
 }
 
-func (m *HostModel) handleButtonPress() (tea.Model, tea.Cmd) {
-	buttons := []string{"Aggregate", "Send", "New Round", "Export"}
-	if m.activePane == paneButtons && m.buttonIndex < len(buttons) {
-		switch buttons[m.buttonIndex] {
-		case "Aggregate":
-			m.hub.AggregateChan <- m.round
-		case "Send":
-			return m.handleDirectiveSend()
-		case "New Round":
-			m.round++
-			m.hub.NewRoundChan <- m.round
-		case "Export":
-			// Generate export path with timestamp
-			exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
-			m.hub.ExportChan <- exportPath
-		}
+func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
+	activeBtn := m.buttons.ActiveButton()
+	switch activeBtn {
+	case "[Aggregate]":
+		m.hub.AggregateChan <- m.round
+	case "[Send]":
+		return m.handleDirectiveSend()
+	case "[New Round]":
+		m.round++
+		m.hub.NewRoundChan <- m.round
+	case "[Export]":
+		exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
+		m.hub.ExportChan <- exportPath
 	}
 	return m, nil
 }
 
-func (m *HostModel) addMessage(msg hub.Message) {
-	rendered, _ := m.renderer.Render(msg.Content)
-	content := fmt.Sprintf("[%s] **%s** (Round %d):\n%s\n---\n",
-		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
+func (m *AppModel) layout() {
+	transcriptHeight := m.height/2 - 2
+	directiveHeight := 8
+	buttonsHeight := 6
+	participantsHeight := m.height - transcriptHeight - directiveHeight - buttonsHeight - 2
 
-	current := m.transcript.View()
-	m.transcript.SetContent(current + content)
-	m.transcript.GotoBottom()
+	// Left pane (transcript) - full height
+	m.transcript.SetSize(m.width/2, m.height)
+
+	// Right panes - stacked vertically
+	rightWidth := m.width / 2
+	m.participants.SetSize(rightWidth, participantsHeight)
+	m.directive.SetSize(rightWidth, directiveHeight)
+	m.buttons.SetSize(rightWidth, buttonsHeight)
 }
 
-func (m *HostModel) addSystemMessage(content string) {
-	msg := fmt.Sprintf("[%s] *%s*\n---\n",
-		time.Now().Format("15:04:05"), content)
-	current := m.transcript.View()
-	m.transcript.SetContent(current + msg)
-	m.transcript.GotoBottom()
-}
-
-func (m *HostModel) updateParticipant(updated hub.Participant) {
-	for i, p := range m.participants {
-		if p.Name == updated.Name {
-			m.participants[i] = updated
-			break
-		}
-	}
-}
-
-func (m *HostModel) layout() {
-	transcriptHeight := m.height/2 - 4
-	directiveHeight := 6
-
-	m.transcript.Width = m.width/2 - 2
-	m.transcript.Height = transcriptHeight
-
-	m.directiveInput.SetWidth(m.width/2 - 2)
-	m.directiveInput.SetHeight(directiveHeight)
-}
-
-func (m *HostModel) View() string {
+func (m *AppModel) View() string {
 	m.layout()
 
-	leftPane := m.renderTranscriptPane()
-	rightTop := m.renderParticipantsPane()
-	rightMid := m.renderDirectivePane()
-	rightBottom := m.renderButtonsPane()
+	// Left: Transcript (full height)
+	leftPane := m.transcript.View()
+
+	// Right: stacked Participants, Directive, Buttons
+	rightTop := m.participants.View()
+	rightMid := m.directive.View()
+	rightBottom := m.buttons.View()
 
 	rightPane := lipgloss.JoinVertical(lipgloss.Left, rightTop, rightMid, rightBottom)
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
-}
-
-func (m *HostModel) renderTranscriptPane() string {
-	border := m.styles.paneBorder
-	if m.activePane == paneTranscript {
-		border = m.styles.activeBorder
-	}
-	title := m.styles.title.Render("Transcript")
-	content := m.transcript.View()
-	return border.Width(m.width/2 - 2).Height(m.height/2 - 2).Render(title + "\n" + content)
-}
-
-func (m *HostModel) renderParticipantsPane() string {
-	border := m.styles.paneBorder
-	if m.activePane == paneParticipants {
-		border = m.styles.activeBorder
-	}
-
-	title := m.styles.title.Render(fmt.Sprintf("Participants (Round %d)", m.round))
-
-	var items []string
-	for _, p := range m.participants {
-		statusStyle := m.styles.statusIdle
-		switch p.Status {
-		case hub.StatusIdle:
-			statusStyle = m.styles.statusIdle
-		case hub.StatusTyping:
-			statusStyle = m.styles.statusTyping
-		case hub.StatusSubmitted:
-			statusStyle = m.styles.statusSubmitted
-		case hub.StatusReady:
-			statusStyle = m.styles.statusReady
-		}
-		status := statusStyle.Render(string(p.Status))
-		items = append(items, m.styles.participant.Render(fmt.Sprintf("%s  %s", p.Name, status)))
-	}
-
-	content := strings.Join(items, "\n")
-	return border.Width(m.width/2 - 2).Height(m.height/2 - 2).Render(title + "\n" + content)
-}
-
-func (m *HostModel) renderDirectivePane() string {
-	border := m.styles.directiveInput
-	if m.activePane == paneDirective {
-		border = m.styles.activeBorder
-	}
-
-	title := m.styles.title.Render("Directive (Enter=Send, Ctrl+Enter=Newline)")
-	content := m.directiveInput.View()
-	return border.Width(m.width/2 - 2).Height(8).Render(title + "\n" + content)
-}
-
-func (m *HostModel) renderButtonsPane() string {
-	border := m.styles.paneBorder
-	if m.activePane == paneButtons {
-		border = m.styles.activeBorder
-	}
-
-	title := m.styles.title.Render("Controls")
-
-	buttonLabels := []string{"[Aggregate]", "[Send]", "[New Round]", "[Export]"}
-	var buttons []string
-	for i, label := range buttonLabels {
-		btnStyle := m.styles.button
-		if i == m.buttonIndex && m.activePane == paneButtons {
-			btnStyle = m.styles.buttonActive
-		}
-		buttons = append(buttons, btnStyle.Render(label))
-	}
-
-	content := strings.Join(buttons, " ")
-	return border.Width(m.width/2 - 2).Height(6).Render(title + "\n" + content)
 }

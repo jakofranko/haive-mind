@@ -10,7 +10,7 @@ import (
 
 func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	model.width = 120
 	model.height = 40
@@ -22,7 +22,7 @@ func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_ParticipantsFocused(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	model.width = 120
 	model.height = 40
@@ -35,12 +35,12 @@ func TestSnapshot_FullTUI_ParticipantsFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_DirectiveFocused(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	model.width = 120
 	model.height = 40
 	model.activePane = paneDirective
-	model.directiveInput.SetValue("Test directive content")
+	model.directive.SetValue("Test directive content")
 	model.layout()
 
 	g := goldie.New(t, goldie.WithFixtureDir("testdata"))
@@ -49,35 +49,34 @@ func TestSnapshot_FullTUI_DirectiveFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_ButtonsFocused(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	model.width = 120
 	model.height = 40
 	model.activePane = paneButtons
-	model.buttonIndex = 0
+	model.buttons.SetButtonIndex(0)
 	model.layout()
 
 	g := goldie.New(t, goldie.WithFixtureDir("testdata"))
 	g.Assert(t, "full_tui_buttons_focused_aggregate", []byte(model.View()))
 
-	model.buttonIndex = 1
+	model.buttons.SetButtonIndex(1)
 	g.Assert(t, "full_tui_buttons_focused_send", []byte(model.View()))
 
-	model.buttonIndex = 2
+	model.buttons.SetButtonIndex(2)
 	g.Assert(t, "full_tui_buttons_focused_newround", []byte(model.View()))
 
-	model.buttonIndex = 3
+	model.buttons.SetButtonIndex(3)
 	g.Assert(t, "full_tui_buttons_focused_export", []byte(model.View()))
 }
 
 func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	model.width = 120
 	model.height = 40
-	model.transcript.Width = 80
-	model.transcript.Height = 20
+	model.transcript.SetSize(80, 20)
 
 	// Fixed timestamp for reproducible snapshots
 	fixedTime := time.Date(2026, 1, 15, 10, 30, 45, 0, time.UTC)
@@ -91,7 +90,7 @@ func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 		Timestamp: fixedTime,
 		Round:     1,
 	}
-	model.addMessage(*msg1)
+	model.transcript.AddMessage(*msg1)
 
 	msg2 := &hub.Message{
 		ID:        "test-2",
@@ -101,7 +100,7 @@ func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 		Timestamp: fixedTime,
 		Round:     1,
 	}
-	model.addMessage(*msg2)
+	model.transcript.AddMessage(*msg2)
 
 	msg3 := &hub.Message{
 		ID:        "test-3",
@@ -111,7 +110,7 @@ func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 		Timestamp: fixedTime,
 		Round:     1,
 	}
-	model.addMessage(*msg3)
+	model.transcript.AddMessage(*msg3)
 
 	model.layout()
 
@@ -121,17 +120,17 @@ func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 
 func TestSnapshot_Participants_AllStatuses(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	model.width = 120
 	model.height = 40
 	model.activePane = paneParticipants
-	model.participants = []hub.Participant{
+	model.participants.SetParticipants([]hub.Participant{
 		{Name: "Agent-1", Status: hub.StatusIdle, Round: 1},
 		{Name: "Agent-2", Status: hub.StatusTyping, Round: 1},
 		{Name: "Agent-3", Status: hub.StatusSubmitted, Round: 1},
 		{Name: "Agent-4", Status: hub.StatusReady, Round: 1},
-	}
+	})
 	model.layout()
 
 	g := goldie.New(t, goldie.WithFixtureDir("testdata"))
@@ -140,7 +139,7 @@ func TestSnapshot_Participants_AllStatuses(t *testing.T) {
 
 func TestSnapshot_SmallTerminal(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
+	model := NewAppModel(hubChans)
 
 	model.width = 80
 	model.height = 24
