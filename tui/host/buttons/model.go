@@ -38,14 +38,9 @@ func defaultStyles() Styles {
 			Padding(0, 1),
 		button: lipgloss.NewStyle().
 			Padding(0, 2).
-			Margin(0, 1).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")),
+			Foreground(lipgloss.Color("240")),
 		buttonActive: lipgloss.NewStyle().
 			Padding(0, 2).
-			Margin(0, 1).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
 			Background(lipgloss.Color("39")).
 			Foreground(lipgloss.Color("0")),
 	}
