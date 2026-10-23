@@ -129,10 +129,7 @@ func NewHostModel(hubChans *hub.HubChannels) *HostModel {
 }
 
 func (m *HostModel) Init() tea.Cmd {
-	return tea.Batch(
-		m.listenForMessages(),
-		m.listenForEvents(),
-	)
+	return m.listenForMessages()
 }
 
 func (m *HostModel) listenForMessages() tea.Cmd {
@@ -142,15 +139,7 @@ func (m *HostModel) listenForMessages() tea.Cmd {
 	}
 }
 
-func (m *HostModel) listenForEvents() tea.Cmd {
-	return func() tea.Msg {
-		event := <-m.hub.Events
-		return event
-	}
-}
-
 type hubMessageMsg hub.Message
-type hubEventMsg hub.HubEvent
 
 func (m *HostModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -168,11 +157,6 @@ func (m *HostModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case hubMessageMsg:
 		m.addMessage(hub.Message(msg))
 		cmds = append(cmds, m.listenForMessages())
-		return m, tea.Batch(cmds...)
-
-	case hubEventMsg:
-		m.handleHubEvent(hub.HubEvent(msg))
-		cmds = append(cmds, m.listenForEvents())
 		return m, tea.Batch(cmds...)
 	}
 
@@ -263,42 +247,17 @@ func (m *HostModel) handleButtonPress() (tea.Model, tea.Cmd) {
 	if m.activePane == paneButtons && m.buttonIndex < len(buttons) {
 		switch buttons[m.buttonIndex] {
 		case "Aggregate":
-			m.hub.Commands <- hub.HubCommand{Type: hub.CmdAggregate, Payload: m.round}
+			// TODO: Send via typed channel in Phase 4
 		case "Send":
 			return m.handleDirectiveSend()
 		case "New Round":
-			m.hub.Commands <- hub.HubCommand{Type: hub.CmdNewRound, Payload: m.round + 1}
 			m.round++
+			// TODO: Send via typed channel in Phase 4
 		case "Export":
-			m.hub.Commands <- hub.HubCommand{Type: hub.CmdExport, Payload: nil}
+			// TODO: Send via typed channel in Phase 4
 		}
 	}
 	return m, nil
-}
-
-func (m *HostModel) handleHubEvent(event hub.HubEvent) {
-	switch event.Type {
-	case hub.EventMessageReceived:
-		if msg, ok := event.Payload.(*hub.Message); ok {
-			m.addMessage(*msg)
-		}
-	case hub.EventParticipantUpdate:
-		if p, ok := event.Payload.(hub.Participant); ok {
-			m.updateParticipant(p)
-		}
-	case hub.EventRoundChanged:
-		if round, ok := event.Payload.(int); ok {
-			m.round = round
-		}
-	case hub.EventExportComplete:
-		if path, ok := event.Payload.(string); ok {
-			m.addSystemMessage(fmt.Sprintf("Exported to %s", path))
-		}
-	case hub.EventError:
-		if err, ok := event.Payload.(error); ok {
-			m.addSystemMessage(fmt.Sprintf("Error: %v", err))
-		}
-	}
 }
 
 func (m *HostModel) addMessage(msg hub.Message) {

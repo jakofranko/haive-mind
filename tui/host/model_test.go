@@ -97,61 +97,29 @@ func TestHostModel_HandleDirectiveSend(t *testing.T) {
 	}
 }
 
-func TestHostModel_HandleButtonPress_Aggregate(t *testing.T) {
+func TestHostModel_HandleButtonPress_Send(t *testing.T) {
 	hubChans := hub.NewHubChannels()
 	model := NewHostModel(hubChans)
 
-	model.activePane = paneButtons
-	model.buttonIndex = 0 // Aggregate
+	// Set directive content
+	model.directiveInput.SetValue("Test directive")
 
+	// Press Enter in buttons pane with Send button selected
+	model.activePane = paneButtons
+	model.buttonIndex = 1 // Send
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updatedModel.(*HostModel)
 
+	// Directive should be cleared (sent)
+	assert.Equal(t, "", model.directiveInput.Value())
+	// Message should be sent to outbound channel
 	select {
-	case cmd := <-hubChans.Commands:
-		assert.Equal(t, hub.CmdAggregate, cmd.Type)
-		assert.Equal(t, 1, cmd.Payload)
+	case msg := <-hubChans.Outbound:
+		assert.Equal(t, "Test directive", msg.Content)
+		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
+		assert.Equal(t, "host", msg.From)
 	default:
-		t.Fatal("Expected aggregate command")
-	}
-}
-
-func TestHostModel_HandleButtonPress_NewRound(t *testing.T) {
-	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
-
-	model.activePane = paneButtons
-	model.buttonIndex = 2 // New Round
-
-	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updatedModel.(*HostModel)
-
-	assert.Equal(t, 2, model.round)
-
-	select {
-	case cmd := <-hubChans.Commands:
-		assert.Equal(t, hub.CmdNewRound, cmd.Type)
-		assert.Equal(t, 2, cmd.Payload)
-	default:
-		t.Fatal("Expected new round command")
-	}
-}
-
-func TestHostModel_HandleButtonPress_Export(t *testing.T) {
-	hubChans := hub.NewHubChannels()
-	model := NewHostModel(hubChans)
-
-	model.activePane = paneButtons
-	model.buttonIndex = 3 // Export
-
-	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updatedModel.(*HostModel)
-
-	select {
-	case cmd := <-hubChans.Commands:
-		assert.Equal(t, hub.CmdExport, cmd.Type)
-	default:
-		t.Fatal("Expected export command")
+		t.Fatal("Expected message on outbound channel")
 	}
 }
 
