@@ -1,7 +1,10 @@
 package hub
 
 import (
+	"context"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewHub(t *testing.T) {
@@ -385,5 +388,251 @@ func TestRoundKeyEncoding(t *testing.T) {
 	// Round 2 should exist with key "s1:2" as pending
 	if _, ok := h.rounds["s1:2"]; !ok {
 		t.Error("Round 2 should have key 's1:2'")
+	}
+}
+
+func TestAggregate(t *testing.T) {
+	h := NewHub()
+	h.CreateSession("s1")
+	h.AddParticipant("p1", "Alice")
+	h.AddParticipant("p2", "Bob")
+	h.StartRound("s1")
+	h.SubmitResponse("s1", "p1", "Response A")
+	h.SubmitResponse("s1", "p2", "Response B")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	// opencode run will fail since it's not installed, so we expect an error
+	_, err := h.Aggregate(ctx, "s1", "What is the answer?")
+	if err == nil {
+		t.Error("Aggregate() should error when opencode is not available")
+	}
+	if !strings.Contains(err.Error(), "opencode run failed") {
+		t.Errorf("Aggregate() error = %v, want opencode run failed", err)
+	}
+}
+
+func TestAggregateNoResponses(t *testing.T) {
+	h := NewHub()
+	h.CreateSession("s1")
+	h.StartRound("s1")
+
+	ctx := context.Background()
+	_, err := h.Aggregate(ctx, "s1", "What is the answer?")
+	if err == nil {
+		t.Error("Aggregate() should error when no responses")
+	}
+	if !strings.Contains(err.Error(), "no responses to aggregate") {
+		t.Errorf("Aggregate() error = %v, want no responses to aggregate", err)
+	}
+}
+
+func TestAggregateNonExistingSession(t *testing.T) {
+	h := NewHub()
+
+	ctx := context.Background()
+	_, err := h.Aggregate(ctx, "s2", "What is the answer?")
+	if err == nil {
+		t.Error("Aggregate() should error for non-existing session")
+	}
+	if !strings.Contains(err.Error(), "session") {
+		t.Errorf("Aggregate() error = %v, want session not found", err)
+	}
+}
+
+func TestBuildSynthesisPrompt(t *testing.T) {
+	h := NewHub()
+	h.AddParticipant("p1", "Alice")
+	h.AddParticipant("p2", "Bob")
+
+	responses := []Response{
+		{ParticipantID: "p1", Content: "Response A"},
+		{ParticipantID: "p2", Content: "Response B"},
+	}
+
+	prompt := h.buildSynthesisPrompt("What is the answer?", responses)
+
+	if !strings.Contains(prompt, "Original question:") {
+		t.Error("Prompt should contain 'Original question:'")
+	}
+	if !strings.Contains(prompt, "What is the answer?") {
+		t.Error("Prompt should contain the question")
+	}
+	if !strings.Contains(prompt, "Participant responses:") {
+		t.Error("Prompt should contain 'Participant responses:'")
+	}
+	if !strings.Contains(prompt, "Alice") {
+		t.Error("Prompt should contain participant name")
+	}
+	if !strings.Contains(prompt, "Response A") {
+		t.Error("Prompt should contain response content")
+	}
+	if !strings.Contains(prompt, "Instruction: Reconcile") {
+		t.Error("Prompt should contain reconciliation instruction")
+	}
+}
+
+func TestMarkConflict(t *testing.T) {
+	h := NewHub()
+	h.CreateSession("s1")
+	h.AddParticipant("p1", "Alice")
+	h.AddParticipant("p2", "Bob")
+	h.StartRound("s1")
+	h.SubmitResponse("s1", "p1", "Response A")
+	h.SubmitResponse("s1", "p2", "Response B")
+
+	conflict, err := h.MarkConflict("s1", []string{"p1", "p2"})
+	if err != nil {
+		t.Fatalf("MarkConflict() error = %v", err)
+	}
+	if conflict.SessionID != "s1" {
+		t.Errorf("Conflict sessionID = %s, want s1", conflict.SessionID)
+	}
+	if conflict.Round != 1 {
+		t.Errorf("Conflict round = %d, want 1", conflict.Round)
+	}
+	if len(conflict.ParticipantIDs) != 2 {
+		t.Errorf("Conflict participantIDs = %v, want [p1 p2]", conflict.ParticipantIDs)
+	}
+	if conflict.Status != ConflictStatusDetected {
+		t.Errorf("Conflict status = %s, want detected", conflict.Status)
+	}
+	if conflict.DetectedAt.IsZero() {
+		t.Error("DetectedAt should be set")
+	}
+
+	// Verify conflict is stored in round
+	h.mu.RLock()
+	round := h.rounds["s1:1"]
+	h.mu.RUnlock()
+	if round.Conflict == nil {
+		t.Error("Round should have conflict")
+	}
+	if round.Conflict.ID != conflict.ID {
+		t.Error("Round conflict ID mismatch")
+	}
+}
+
+func TestMarkConflictDuplicate(t *testing.T) {
+	h := NewHub()
+	h.CreateSession("s1")
+	h.AddParticipant("p1", "Alice")
+	h.AddParticipant("p2", "Bob")
+	h.StartRound("s1")
+
+	_, err := h.MarkConflict("s1", []string{"p1", "p2"})
+	if err != nil {
+		t.Fatalf("First MarkConflict() error = %v", err)
+	}
+
+	_, err = h.MarkConflict("s1", []string{"p1", "p2"})
+	if err == nil {
+		t.Error("MarkConflict() should error when conflict already exists")
+	}
+}
+
+func TestMarkConflictNonExistingSession(t *testing.T) {
+	h := NewHub()
+
+	_, err := h.MarkConflict("s2", []string{"p1", "p2"})
+	if err == nil {
+		t.Error("MarkConflict() should error for non-existing session")
+	}
+}
+
+func TestMarkConflictNoActiveRound(t *testing.T) {
+	h := NewHub()
+	h.CreateSession("s1")
+	h.AddParticipant("p1", "Alice")
+	// No StartRound called
+
+	_, err := h.MarkConflict("s1", []string{"p1"})
+	if err == nil {
+		t.Error("MarkConflict() should error when no active round")
+	}
+}
+
+func TestResolveConflict(t *testing.T) {
+	h := NewHub()
+	h.CreateSession("s1")
+	h.AddParticipant("p1", "Alice")
+	h.AddParticipant("p2", "Bob")
+	h.StartRound("s1")
+	h.SubmitResponse("s1", "p1", "Response A")
+	h.SubmitResponse("s1", "p2", "Response B")
+
+	_, err := h.MarkConflict("s1", []string{"p1", "p2"})
+	if err != nil {
+		t.Fatalf("MarkConflict() error = %v", err)
+	}
+
+	conflict, err := h.ResolveConflict("s1", "Agreed on unified response")
+	if err != nil {
+		t.Fatalf("ResolveConflict() error = %v", err)
+	}
+	if conflict.Status != ConflictStatusResolved {
+		t.Errorf("Conflict status = %s, want resolved", conflict.Status)
+	}
+	if conflict.Resolution != "Agreed on unified response" {
+		t.Errorf("Conflict resolution = %s, want 'Agreed on unified response'", conflict.Resolution)
+	}
+	if conflict.ResolvedAt == nil || conflict.ResolvedAt.IsZero() {
+		t.Error("ResolvedAt should be set")
+	}
+}
+
+func TestResolveConflictNoConflict(t *testing.T) {
+	h := NewHub()
+	h.CreateSession("s1")
+	h.AddParticipant("p1", "Alice")
+	h.StartRound("s1")
+
+	_, err := h.ResolveConflict("s1", "Resolution")
+	if err == nil {
+		t.Error("ResolveConflict() should error when no conflict exists")
+	}
+}
+
+func TestResolveConflictNonExistingSession(t *testing.T) {
+	h := NewHub()
+
+	_, err := h.ResolveConflict("s2", "Resolution")
+	if err == nil {
+		t.Error("ResolveConflict() should error for non-existing session")
+	}
+}
+
+func TestGetConflict(t *testing.T) {
+	h := NewHub()
+	h.CreateSession("s1")
+	h.AddParticipant("p1", "Alice")
+	h.AddParticipant("p2", "Bob")
+	h.StartRound("s1")
+
+	// No conflict yet
+	conflict, ok := h.GetConflict("s1")
+	if ok {
+		t.Error("GetConflict() should return false when no conflict")
+	}
+	if conflict != nil {
+		t.Error("GetConflict() should return nil when no conflict")
+	}
+
+	// Mark conflict
+	_, err := h.MarkConflict("s1", []string{"p1", "p2"})
+	if err != nil {
+		t.Fatalf("MarkConflict() error = %v", err)
+	}
+
+	// Get conflict
+	conflict, ok = h.GetConflict("s1")
+	if !ok {
+		t.Error("GetConflict() should return true when conflict exists")
+	}
+	if conflict == nil {
+		t.Error("GetConflict() should return conflict")
+	}
+	if len(conflict.ParticipantIDs) != 2 {
+		t.Errorf("Conflict participantIDs = %v, want [p1 p2]", conflict.ParticipantIDs)
 	}
 }
