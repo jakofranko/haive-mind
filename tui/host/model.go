@@ -161,21 +161,29 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *AppModel) forwardToChildren(msg tea.Msg) []tea.Cmd {
 	var cmds []tea.Cmd
-	if model, cmd := m.transcript.Update(msg); cmd != nil {
+	if model, cmd := m.transcript.Update(msg); cmd != nil || true {
 		m.transcript = model.(transcript.Model)
-		cmds = append(cmds, cmd)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
-	if model, cmd := m.participants.Update(msg); cmd != nil {
+	if model, cmd := m.participants.Update(msg); cmd != nil || true {
 		m.participants = model.(participants.Model)
-		cmds = append(cmds, cmd)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
-	if model, cmd := m.directive.Update(msg); cmd != nil {
+	if model, cmd := m.directive.Update(msg); cmd != nil || true {
 		m.directive = model.(directive.Model)
-		cmds = append(cmds, cmd)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
-	if model, cmd := m.buttons.Update(msg); cmd != nil {
+	if model, cmd := m.buttons.Update(msg); cmd != nil || true {
 		m.buttons = model.(buttons.Model)
-		cmds = append(cmds, cmd)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 	return cmds
 }
@@ -184,24 +192,32 @@ func (m *AppModel) forwardToFocused(msg tea.Msg) []tea.Cmd {
 	var cmds []tea.Cmd
 	switch m.activePane {
 	case paneTranscript:
-		if model, cmd := m.transcript.Update(msg); cmd != nil {
+		if model, cmd := m.transcript.Update(msg); cmd != nil || true {
 			m.transcript = model.(transcript.Model)
-			cmds = append(cmds, cmd)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 	case paneDirective:
-		if model, cmd := m.directive.Update(msg); cmd != nil {
+		if model, cmd := m.directive.Update(msg); cmd != nil || true {
 			m.directive = model.(directive.Model)
-			cmds = append(cmds, cmd)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 	case paneParticipants:
-		if model, cmd := m.participants.Update(msg); cmd != nil {
+		if model, cmd := m.participants.Update(msg); cmd != nil || true {
 			m.participants = model.(participants.Model)
-			cmds = append(cmds, cmd)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 	case paneButtons:
-		if model, cmd := m.buttons.Update(msg); cmd != nil {
+		if model, cmd := m.buttons.Update(msg); cmd != nil || true {
 			m.buttons = model.(buttons.Model)
-			cmds = append(cmds, cmd)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 	}
 	return cmds
@@ -233,10 +249,12 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if keyStr == "enter" && !isCtrlPressed(msg) {
 			return m.handleDirectiveSend()
 		}
-		// Forward to directive model
-		if model, cmd := m.directive.Update(msg); cmd != nil {
+		// Forward to directive model - always update child state
+		if model, cmd := m.directive.Update(msg); true {
 			m.directive = model.(directive.Model)
-			return m, cmd
+			if cmd != nil {
+				return m, cmd
+			}
 		}
 		return m, nil
 
@@ -244,17 +262,22 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if keyStr == "enter" {
 			return m.handleButtonPress()
 		}
-		// Forward left/right to buttons model
-		if model, cmd := m.buttons.Update(msg); cmd != nil {
+		// Forward left/right to buttons model - always update child state
+		if model, cmd := m.buttons.Update(msg); true {
 			m.buttons = model.(buttons.Model)
-			return m, cmd
+			if cmd != nil {
+				return m, cmd
+			}
 		}
 		return m, nil
 
 	case paneTranscript:
-		if model, cmd := m.transcript.Update(msg); cmd != nil {
+		// Forward to transcript model - always update child state
+		if model, cmd := m.transcript.Update(msg); true {
 			m.transcript = model.(transcript.Model)
-			return m, cmd
+			if cmd != nil {
+				return m, cmd
+			}
 		}
 		return m, nil
 
