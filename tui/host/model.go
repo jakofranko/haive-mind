@@ -23,7 +23,7 @@ const (
 
 // AppModel is the main TUI model that composes child pane models
 type AppModel struct {
-	hub        *hub.HubChannels
+	hub        hub.Hub
 	width      int
 	height     int
 	activePane int
@@ -36,7 +36,7 @@ type AppModel struct {
 	buttons      buttons.Model
 }
 
-func NewAppModel(hubChans *hub.HubChannels) *AppModel {
+func NewAppModel(hubChans hub.Hub) *AppModel {
 	m := &AppModel{
 		hub:          hubChans,
 		activePane:   paneTranscript,
@@ -79,35 +79,35 @@ type errorMsg error
 
 func (m *AppModel) listenForMessages() tea.Cmd {
 	return func() tea.Msg {
-		msg := <-m.hub.Inbound
+		msg := <-m.hub.Inbound()
 		return hubMessageMsg(*msg)
 	}
 }
 
 func (m *AppModel) listenForParticipantUpdates() tea.Cmd {
 	return func() tea.Msg {
-		p := <-m.hub.ParticipantUpdateChan
+		p := <-m.hub.ParticipantUpdateChan()
 		return participantUpdateMsg(p)
 	}
 }
 
 func (m *AppModel) listenForRoundChanges() tea.Cmd {
 	return func() tea.Msg {
-		round := <-m.hub.RoundChangedChan
+		round := <-m.hub.RoundChangedChan()
 		return roundChangedMsg(round)
 	}
 }
 
 func (m *AppModel) listenForExportComplete() tea.Cmd {
 	return func() tea.Msg {
-		path := <-m.hub.ExportCompleteChan
+		path := <-m.hub.ExportCompleteChan()
 		return exportCompleteMsg(path)
 	}
 }
 
 func (m *AppModel) listenForErrors() tea.Cmd {
 	return func() tea.Msg {
-		err := <-m.hub.ErrorChan
+		err := <-m.hub.ErrorChan()
 		return errorMsg(err)
 	}
 }
@@ -307,8 +307,8 @@ func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 	}
 
 	msg := hub.NewMessage(hub.MessageTypeDirective, "host", content, m.round)
-	m.hub.Outbound <- msg // For local transcript display
-	m.hub.SendChan <- msg // For hub to send to agents
+	m.hub.Outbound() <- msg // For local transcript display
+	m.hub.SendChan() <- msg // For hub to send to agents
 	m.transcript.AddMessage(*msg)
 
 	m.directive.Reset()
@@ -319,15 +319,15 @@ func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 	activeBtn := m.buttons.ActiveButton()
 	switch activeBtn {
 	case "[Aggregate]":
-		m.hub.AggregateChan <- m.round
+		m.hub.AggregateChan() <- m.round
 	case "[Send]":
 		return m.handleDirectiveSend()
 	case "[New Round]":
 		m.round++
-		m.hub.NewRoundChan <- m.round
+		m.hub.NewRoundChan() <- m.round
 	case "[Export]":
 		exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
-		m.hub.ExportChan <- exportPath
+		m.hub.ExportChan() <- exportPath
 	}
 	return m, nil
 }

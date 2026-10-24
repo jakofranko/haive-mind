@@ -88,7 +88,7 @@ func TestAppModel_HandleDirectiveSend(t *testing.T) {
 	assert.Equal(t, "", model.directive.Value())
 	// Message should be sent to outbound channel
 	select {
-	case msg := <-hubChans.Outbound:
+	case msg := <-hubChans.Outbound():
 		assert.Equal(t, "Test directive", msg.Content)
 		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
 		assert.Equal(t, "host", msg.From)
@@ -114,7 +114,7 @@ func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 	assert.Equal(t, "", model.directive.Value())
 	// Message should be sent to outbound channel
 	select {
-	case msg := <-hubChans.Outbound:
+	case msg := <-hubChans.Outbound():
 		assert.Equal(t, "Test directive", msg.Content)
 		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
 		assert.Equal(t, "host", msg.From)
