@@ -196,7 +196,7 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch m.activePane {
 	case paneResponse:
-		if keyStr == "ctrl+enter" {
+		if keyStr == "enter" {
 			return m.handleResponseSubmit()
 		}
 		fallthrough

@@ -4,8 +4,8 @@
 │Waiting for messages...              │╰────────────────────────╯              
 │                                     │╭───────────────────────────────────────
 │                                     │──────╮                                 
-│                                     ││ Response (Ctrl+Enter=Submit,          
-│                                     │Enter=Newline) │                        
+│                                     ││ Response (Enter=Submit,               
+│                                     │Ctrl+Enter=Newline) │                   
 │                                     ││┃ Line 1                               
 │                                     ││                                       
 │                                     ││┃ Line 2                               

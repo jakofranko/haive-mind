@@ -4,9 +4,9 @@
 │---                                                                         │╰────────────────────────╯              
 │                                                                            │╭───────────────────────────────────────
 │                                                                            │──────╮                                 
-│  Response with code                                                        ││ Response (Ctrl+Enter=Submit,          
-│                                                                            │Enter=Newline) │                        
-│                                                                            ││┃ Type your response here... (Ctr...   
+│  Response with code                                                        ││ Response (Enter=Submit,               
+│                                                                            │Ctrl+Enter=Newline) │                   
+│                                                                            ││┃ Type your response here... (Ent...   
 │---                                                                         ││                                       
 │                                                                            ││┃                                      
 │                                                                            ││                                       
