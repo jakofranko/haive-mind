@@ -115,6 +115,11 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.listenForMessages())
 		return m, tea.Batch(cmds...)
 
+	case hub.Message:
+		m.transcript.AddMessage(msg)
+		cmds = append(cmds, m.listenForMessages())
+		return m, tea.Batch(cmds...)
+
 	case participantUpdateMsg:
 		m.sidebar.UpdateParticipant(hub.Participant(msg))
 		cmds = append(cmds, m.listenForParticipantUpdates())

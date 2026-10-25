@@ -8,37 +8,15 @@ import (
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
 	"github.com/charmbracelet/wish/activeterm"
+	"github.com/charmbracelet/wish/bubbletea"
 	"github.com/charmbracelet/wish/logging"
+	"github.com/muesli/termenv"
 	"jakofranko/haive-mind/hub"
 	"jakofranko/haive-mind/tui/host"
 	"jakofranko/haive-mind/tui/participant"
 )
 
 func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
-	s, err := wish.NewServer(
-		wish.WithAddress(":"+port),
-		wish.WithHostKeyPath(hostKey),
-		wish.WithMiddleware(
-			logging.Middleware(),
-			activeterm.Middleware(),
-			middleware(h),
-		),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return s
-}
-
-type sessionManager struct {
-	mu           sync.Mutex
-	hostConnected bool
-	hostProgram   *tea.Program
-	participantPrograms map[string]*tea.Program
-	hub          hub.Hub
-}
-
-func middleware(h hub.Hub) wish.Middleware {
 	mgr := &sessionManager{
 		hub:                  h,
 		participantPrograms: make(map[string]*tea.Program),
@@ -46,47 +24,60 @@ func middleware(h hub.Hub) wish.Middleware {
 
 	go mgr.broadcastLoop()
 
-	return func(next ssh.Handler) ssh.Handler {
-		return func(s ssh.Session) {
-			mgr.mu.Lock()
-			isHost := !mgr.hostConnected
-			mgr.mu.Unlock()
-
-			var p *tea.Program
-			var name string
-			if isHost {
-				model := host.NewAppModel(h)
-				p = tea.NewProgram(model, tea.WithAltScreen())
-				name = "host"
-				mgr.mu.Lock()
-				mgr.hostConnected = true
-				mgr.hostProgram = p
-				mgr.mu.Unlock()
-			} else {
-				name = "Agent-" + s.User()
-				model := participant.NewParticipantModel(h, name)
-				p = tea.NewProgram(model, tea.WithAltScreen())
-				mgr.mu.Lock()
-				mgr.participantPrograms[name] = p
-				mgr.mu.Unlock()
-			}
-
-			if err := p.Start(); err != nil {
-				log.Printf("program error for %s: %v", name, err)
-			}
-
-			if isHost {
-				mgr.mu.Lock()
-				mgr.hostProgram = nil
-				mgr.hostConnected = false
-				mgr.mu.Unlock()
-			} else {
-				mgr.mu.Lock()
-				delete(mgr.participantPrograms, name)
-				mgr.mu.Unlock()
-			}
-		}
+	opts := []ssh.Option{
+		wish.WithAddress(":"+port),
+		wish.WithMiddleware(
+			logging.Middleware(),
+			activeterm.Middleware(),
+			bubbletea.MiddlewareWithProgramHandler(mgr.programHandler, termenv.Ascii),
+		),
 	}
+	if hostKey != "" {
+		opts = append(opts, wish.WithHostKeyPath(hostKey))
+	}
+
+	s, err := wish.NewServer(opts...)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return s
+}
+
+type sessionManager struct {
+	mu                  sync.Mutex
+	hostConnected       bool
+	hostProgram         *tea.Program
+	participantPrograms map[string]*tea.Program
+	hub                 hub.Hub
+}
+
+func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
+	m.mu.Lock()
+	isHost := !m.hostConnected
+	m.mu.Unlock()
+
+	var model tea.Model
+	var name string
+	if isHost {
+		model = host.NewAppModel(m.hub)
+		name = "host"
+	} else {
+		name = "Agent-" + s.User()
+		model = participant.NewParticipantModel(m.hub, name)
+	}
+
+	program := tea.NewProgram(model, bubbletea.MakeOptions(s)...)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if isHost {
+		m.hostConnected = true
+		m.hostProgram = program
+	} else {
+		m.participantPrograms[name] = program
+	}
+
+	return program
 }
 
 func (m *sessionManager) broadcastLoop() {
