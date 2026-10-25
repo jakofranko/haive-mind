@@ -19,6 +19,8 @@ type Hub interface {
 	ExportCompleteChan() chan string
 	ErrorChan() chan error
 	SendToAgent(ctx context.Context, prompt string) (string, error)
+	GetDisplayName(username string) string
+	SetDisplayName(username, displayName string)
 }
 
 // HubChannels provides typed channels for communication between TUI and hub
@@ -34,6 +36,7 @@ type HubChannels struct {
 	exportCompleteChan    chan string
 	errorChan             chan error
 	agentRunner           AgentRunner
+	displayNames          map[string]string // SSH username -> display name
 }
 
 func NewHubChannels() *HubChannels {
@@ -49,6 +52,7 @@ func NewHubChannels() *HubChannels {
 		exportCompleteChan:    make(chan string, 10),
 		errorChan:             make(chan error, 10),
 		agentRunner:           newDefaultAgentRunner(),
+		displayNames:          make(map[string]string),
 	}
 }
 
@@ -62,6 +66,14 @@ func (h *HubChannels) ParticipantUpdateChan() chan Participant { return h.partic
 func (h *HubChannels) RoundChangedChan() chan int              { return h.roundChangedChan }
 func (h *HubChannels) ExportCompleteChan() chan string         { return h.exportCompleteChan }
 func (h *HubChannels) ErrorChan() chan error                   { return h.errorChan }
+
+func (h *HubChannels) GetDisplayName(username string) string {
+	return h.displayNames[username]
+}
+
+func (h *HubChannels) SetDisplayName(username, displayName string) {
+	h.displayNames[username] = displayName
+}
 
 const defaultAgentTimeout = 120 * time.Second
 

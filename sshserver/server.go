@@ -62,8 +62,9 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 		model = host.NewAppModel(m.hub)
 		name = "host"
 	} else {
-		name = "Agent-" + s.User()
-		model = participant.NewParticipantModel(m.hub, name)
+		sshUsername := s.User()
+		name = "Agent-" + sshUsername
+		model = participant.NewParticipantModel(m.hub, name, sshUsername)
 	}
 
 	program := tea.NewProgram(model, bubbletea.MakeOptions(s)...)

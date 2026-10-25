@@ -51,7 +51,8 @@ func (m *Message) ToJSON() ([]byte, error) {
 }
 
 type Participant struct {
-	Name   string            `json:"name"`
-	Status ParticipantStatus `json:"status"`
-	Round  int               `json:"round"`
+	Name        string            `json:"name"`
+	DisplayName string            `json:"display_name"`
+	Status      ParticipantStatus `json:"status"`
+	Round       int               `json:"round"`
 }
