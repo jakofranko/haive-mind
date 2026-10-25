@@ -1,12 +1,28 @@
 package host
 
 import (
+	"context"
 	"testing"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
 )
+
+type mockAgentRunner struct {
+	responses map[string]string
+	errors    map[string]error
+}
+
+func (m *mockAgentRunner) Run(ctx context.Context, prompt string) (string, error) {
+	if err, ok := m.errors[prompt]; ok {
+		return "", err
+	}
+	if resp, ok := m.responses[prompt]; ok {
+		return resp, nil
+	}
+	return "default response", nil
+}
 
 func TestAppModel_Init(t *testing.T) {
 	hubChans := hub.NewHubChannels()
@@ -74,6 +90,9 @@ func TestAppModel_Update_ShiftTabNavigation(t *testing.T) {
 
 func TestAppModel_HandleDirectiveSend(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetAgentRunner(&mockAgentRunner{
+		responses: map[string]string{"Test directive": "Agent response"},
+	})
 	model := NewAppModel(hubChans)
 
 	// Set directive content via textarea
@@ -99,6 +118,9 @@ func TestAppModel_HandleDirectiveSend(t *testing.T) {
 
 func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetAgentRunner(&mockAgentRunner{
+		responses: map[string]string{"Test directive": "Agent response"},
+	})
 	model := NewAppModel(hubChans)
 
 	// Set directive content
@@ -182,4 +204,56 @@ func TestAppModel_CtrlEnterInDirective(t *testing.T) {
 	// Actually test that textarea handles it - we can't easily simulate Ctrl+Enter in tests
 	// So just verify the textarea accepts the value
 	assert.Equal(t, "Line 1", model.directive.Value())
+}
+
+func TestAppModel_AgentLoop_Success(t *testing.T) {
+	hubChans := hub.NewHubChannels()
+	hubChans.SetAgentRunner(&mockAgentRunner{
+		responses: map[string]string{
+			"Test directive": "Agent-1 response",
+		},
+	})
+	model := NewAppModel(hubChans)
+
+	// Send directive
+	model.directive.SetValue("Test directive")
+	model.activePane = paneDirective
+	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updatedModel.(*AppModel)
+
+	// Verify directive was sent
+	select {
+	case msg := <-hubChans.Outbound():
+		assert.Equal(t, "Test directive", msg.Content)
+		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
+	default:
+		t.Fatal("Expected directive on outbound")
+	}
+
+	// Verify agent loop state was initialized
+	assert.Equal(t, "Test directive", model.pendingDirective)
+	assert.Equal(t, 0, model.currentAgentIdx)
+}
+
+func TestAppModel_AgentLoop_ErrorShowsToast(t *testing.T) {
+	hubChans := hub.NewHubChannels()
+	hubChans.SetAgentRunner(&mockAgentRunner{
+		errors: map[string]error{
+			"Test directive": assert.AnError,
+		},
+	})
+	model := NewAppModel(hubChans)
+
+	// Send directive
+	model.directive.SetValue("Test directive")
+	model.activePane = paneDirective
+	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updatedModel.(*AppModel)
+
+	// Verify agent loop state was initialized
+	assert.Equal(t, "Test directive", model.pendingDirective)
+	assert.Equal(t, 0, model.currentAgentIdx)
+
+	// Verify toast model is initialized
+	assert.NotNil(t, model.toast)
 }

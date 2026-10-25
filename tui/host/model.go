@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"jakofranko/haive-mind/tui/host/buttons"
 	"jakofranko/haive-mind/tui/host/directive"
 	"jakofranko/haive-mind/tui/host/participants"
+	"jakofranko/haive-mind/tui/host/toast"
 	"jakofranko/haive-mind/tui/host/transcript"
 )
 
@@ -34,17 +36,25 @@ type AppModel struct {
 	participants participants.Model
 	directive    directive.Model
 	buttons      buttons.Model
+	toast        toast.Model
+
+	// Agent loop state
+	pendingDirective string
+	pendingAgents    []string
+	currentAgentIdx  int
 }
 
 func NewAppModel(hubChans hub.Hub) *AppModel {
 	m := &AppModel{
-		hub:          hubChans,
-		activePane:   paneTranscript,
-		round:        1,
-		transcript:   transcript.New(),
-		participants: participants.New(),
-		directive:    directive.New(),
-		buttons:      buttons.New(),
+		hub:           hubChans,
+		activePane:    paneTranscript,
+		round:         1,
+		transcript:    transcript.New(),
+		participants:  participants.New(),
+		directive:     directive.New(),
+		buttons:       buttons.New(),
+		toast:         toast.New(),
+		pendingAgents: []string{"Agent-1", "Agent-2", "Agent-3"},
 	}
 
 	// Set initial participants
@@ -63,6 +73,7 @@ func (m *AppModel) Init() tea.Cmd {
 		m.participants.Init(),
 		m.directive.Init(),
 		m.buttons.Init(),
+		m.toast.Init(),
 		m.listenForMessages(),
 		m.listenForParticipantUpdates(),
 		m.listenForRoundChanges(),
@@ -76,6 +87,12 @@ type participantUpdateMsg hub.Participant
 type roundChangedMsg int
 type exportCompleteMsg string
 type errorMsg error
+type runNextAgentMsg string
+type agentResponseMsg struct {
+	agentName string
+	response  string
+	err       error
+}
 
 func (m *AppModel) listenForMessages() tea.Cmd {
 	return func() tea.Msg {
@@ -122,9 +139,20 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 		// Forward to all children
 		cmds = append(cmds, m.forwardToChildren(msg)...)
+		updatedToast, cmd := m.toast.Update(msg)
+		m.toast = updatedToast.(toast.Model)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
+		// Let toast handle keys first if visible
+		if m.toast.IsVisible() {
+			updatedToast, cmd := m.toast.Update(msg)
+			m.toast = updatedToast.(toast.Model)
+			return m, cmd
+		}
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
@@ -157,6 +185,12 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.transcript.AddSystemMessage("Error: " + msg.Error())
 		cmds = append(cmds, m.listenForErrors())
 		return m, tea.Batch(cmds...)
+
+	case runNextAgentMsg:
+		return m.runNextAgent(string(msg))
+
+	case agentResponseMsg:
+		return m.handleAgentResponse(msg)
 	}
 
 	// Forward unhandled messages to focused child
@@ -186,6 +220,12 @@ func (m *AppModel) forwardToChildren(msg tea.Msg) []tea.Cmd {
 	}
 	if model, cmd := m.buttons.Update(msg); cmd != nil || true {
 		m.buttons = model.(buttons.Model)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	if model, cmd := m.toast.Update(msg); cmd != nil || true {
+		m.toast = model.(toast.Model)
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -317,6 +357,73 @@ func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 	m.transcript.AddMessage(*msg)
 
 	m.directive.Reset()
+
+	// Start agent loop
+	m.pendingDirective = content
+	m.currentAgentIdx = 0
+	return m, func() tea.Msg {
+		return runNextAgentMsg(m.pendingAgents[0])
+	}
+}
+
+func (m *AppModel) runNextAgent(agentName string) (tea.Model, tea.Cmd) {
+	if m.currentAgentIdx >= len(m.pendingAgents) {
+		// All agents done, advance round
+		m.round++
+		m.hub.NewRoundChan() <- m.round
+		m.pendingDirective = ""
+		return m, nil
+	}
+
+	agent := m.pendingAgents[m.currentAgentIdx]
+	// Update participant status to typing
+	m.hub.ParticipantUpdateChan() <- hub.Participant{Name: agent, Status: hub.StatusTyping, Round: m.round}
+
+	return m, func() tea.Msg {
+		ctx := context.Background()
+		response, err := m.hub.SendToAgent(ctx, m.pendingDirective)
+		return agentResponseMsg{agentName: agent, response: response, err: err}
+	}
+}
+
+func (m *AppModel) handleAgentResponse(msg agentResponseMsg) (tea.Model, tea.Cmd) {
+	agent := msg.agentName
+
+	if msg.err != nil {
+		// Show toast with retry
+		m.hub.ParticipantUpdateChan() <- hub.Participant{Name: agent, Status: hub.StatusIdle, Round: m.round}
+		return m, toast.ShowToast(
+			"Agent "+agent+" failed: "+msg.err.Error(),
+			true,
+			func() tea.Cmd {
+				return func() tea.Msg {
+					return runNextAgentMsg(agent)
+				}
+			},
+		)
+	}
+
+	// Success - add response to transcript and broadcast
+	responseMsg := hub.NewMessage(hub.MessageTypeResponse, agent, msg.response, m.round)
+	m.hub.Outbound() <- responseMsg
+	m.transcript.AddMessage(*responseMsg)
+
+	// Update participant status
+	m.hub.ParticipantUpdateChan() <- hub.Participant{Name: agent, Status: hub.StatusReady, Round: m.round}
+
+	// Move to next agent
+	m.currentAgentIdx++
+	if m.currentAgentIdx < len(m.pendingAgents) {
+		nextAgent := m.pendingAgents[m.currentAgentIdx]
+		return m, func() tea.Msg {
+			return runNextAgentMsg(nextAgent)
+		}
+	}
+
+	// All agents done, advance round
+	m.round++
+	m.hub.NewRoundChan() <- m.round
+	m.pendingDirective = ""
 	return m, nil
 }
 
@@ -364,5 +471,12 @@ func (m *AppModel) View() string {
 	rightBottom := lipgloss.NewStyle().Width(rightWidth).Render(m.buttons.View())
 
 	rightPane := lipgloss.JoinVertical(lipgloss.Left, rightTop, rightMid, rightBottom)
-	return lipgloss.JoinHorizontal(lipgloss.Top, m.transcript.View(), rightPane)
+	mainView := lipgloss.JoinHorizontal(lipgloss.Top, m.transcript.View(), rightPane)
+
+	// Add toast overlay
+	toastView := m.toast.View()
+	if toastView != "" {
+		return lipgloss.JoinVertical(lipgloss.Left, mainView, toastView)
+	}
+	return mainView
 }
