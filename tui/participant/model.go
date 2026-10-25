@@ -19,7 +19,7 @@ const (
 )
 
 type ParticipantModel struct {
-	hub        *hub.HubChannels
+	hub        hub.Hub
 	width      int
 	height     int
 	activePane int
@@ -31,7 +31,7 @@ type ParticipantModel struct {
 	response   response.Model
 }
 
-func NewParticipantModel(hubChans *hub.HubChannels, yourName string) *ParticipantModel {
+func NewParticipantModel(hubChans hub.Hub, yourName string) *ParticipantModel {
 	m := &ParticipantModel{
 		hub:        hubChans,
 		activePane: paneTranscript,
@@ -70,28 +70,28 @@ type errorMsg error
 
 func (m *ParticipantModel) listenForMessages() tea.Cmd {
 	return func() tea.Msg {
-		msg := <-m.hub.Inbound
+		msg := <-m.hub.Inbound()
 		return hubMessageMsg(*msg)
 	}
 }
 
 func (m *ParticipantModel) listenForParticipantUpdates() tea.Cmd {
 	return func() tea.Msg {
-		p := <-m.hub.ParticipantUpdateChan
+		p := <-m.hub.ParticipantUpdateChan()
 		return participantUpdateMsg(p)
 	}
 }
 
 func (m *ParticipantModel) listenForRoundChanges() tea.Cmd {
 	return func() tea.Msg {
-		round := <-m.hub.RoundChangedChan
+		round := <-m.hub.RoundChangedChan()
 		return roundChangedMsg(round)
 	}
 }
 
 func (m *ParticipantModel) listenForErrors() tea.Cmd {
 	return func() tea.Msg {
-		err := <-m.hub.ErrorChan
+		err := <-m.hub.ErrorChan()
 		return errorMsg(err)
 	}
 }
@@ -215,8 +215,8 @@ func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
 	}
 
 	msg := hub.NewMessage(hub.MessageTypeResponse, m.yourName, content, m.round)
-	m.hub.Outbound <- msg
-	m.hub.SendChan <- msg
+	m.hub.Outbound() <- msg
+	m.hub.SendChan() <- msg
 	m.transcript.AddMessage(*msg)
 
 	m.response.Reset()
