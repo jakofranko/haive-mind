@@ -17,10 +17,10 @@ import (
 )
 
 type Transcript struct {
-	Messages   []*hub.Message `json:"messages"`
+	Messages     []*hub.Message     `json:"messages"`
 	Participants []*hub.Participant `json:"participants"`
-	StartedAt  time.Time      `json:"started_at"`
-	EndedAt    time.Time      `json:"ended_at"`
+	StartedAt    time.Time          `json:"started_at"`
+	EndedAt      time.Time          `json:"ended_at"`
 }
 
 func main() {

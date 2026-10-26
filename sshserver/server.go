@@ -19,7 +19,7 @@ import (
 
 func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 	mgr := &sessionManager{
-		hub:                  h,
+		hub:                 h,
 		participantSessions: make(map[string]*trackedSession),
 	}
 

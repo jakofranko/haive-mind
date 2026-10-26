@@ -21,18 +21,18 @@ const (
 )
 
 type ParticipantModel struct {
-	hub        hub.Hub
-	width      int
-	height     int
-	activePane int
-	round      int
-	yourName   string
+	hub         hub.Hub
+	width       int
+	height      int
+	activePane  int
+	round       int
+	yourName    string
 	sshUsername string
 
-	transcript  transcript.Model
-	sidebar     sidebar.Model
-	response    response.Model
-	namePrompt  textinput.Model
+	transcript transcript.Model
+	sidebar    sidebar.Model
+	response   response.Model
+	namePrompt textinput.Model
 
 	namePromptActive bool
 }
@@ -46,15 +46,15 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 	namePrompt.Width = 40
 
 	m := &ParticipantModel{
-		hub:            hubChans,
-		activePane:     paneTranscript,
-		round:          1,
-		yourName:       yourName,
-		sshUsername:    sshUsername,
-		transcript:     transcript.New(),
-		sidebar:        sidebar.New(),
-		response:       response.New(),
-		namePrompt:     namePrompt,
+		hub:              hubChans,
+		activePane:       paneTranscript,
+		round:            1,
+		yourName:         yourName,
+		sshUsername:      sshUsername,
+		transcript:       transcript.New(),
+		sidebar:          sidebar.New(),
+		response:         response.New(),
+		namePrompt:       namePrompt,
 		namePromptActive: false,
 	}
 
