@@ -8,12 +8,12 @@ import (
 )
 
 type Model struct {
-	input   textarea.Model
-	width   int
-	height  int
-	styles  Styles
-	active  bool
-	draft   string
+	input  textarea.Model
+	width  int
+	height int
+	styles Styles
+	active bool
+	draft  string
 }
 
 type Styles struct {

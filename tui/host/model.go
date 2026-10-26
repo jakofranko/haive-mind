@@ -26,12 +26,12 @@ const (
 
 // AppModel is the main TUI model that composes child pane models
 type AppModel struct {
-	hub        hub.Hub
-	width      int
-	height     int
-	activePane int
-	round      int
-	yourName   string
+	hub         hub.Hub
+	width       int
+	height      int
+	activePane  int
+	round       int
+	yourName    string
 	sshUsername string
 
 	// Child models
@@ -42,7 +42,7 @@ type AppModel struct {
 	toast        toast.Model
 
 	// Name prompt
-	namePrompt     textinput.Model
+	namePrompt       textinput.Model
 	namePromptActive bool
 }
 
@@ -55,17 +55,17 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 	namePrompt.Width = 40
 
 	m := &AppModel{
-		hub:            hubChans,
-		activePane:     paneTranscript,
-		round:          1,
-		yourName:       "Host",
-		sshUsername:    "host",
-		transcript:     transcript.New(),
-		participants:   participants.New(),
-		directive:      directive.New(),
-		buttons:        buttons.New(),
-		toast:          toast.New(),
-		namePrompt:     namePrompt,
+		hub:              hubChans,
+		activePane:       paneTranscript,
+		round:            1,
+		yourName:         "Host",
+		sshUsername:      "host",
+		transcript:       transcript.New(),
+		participants:     participants.New(),
+		directive:        directive.New(),
+		buttons:          buttons.New(),
+		toast:            toast.New(),
+		namePrompt:       namePrompt,
 		namePromptActive: false,
 	}
 
