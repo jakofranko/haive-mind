@@ -1,6 +1,7 @@
 package sshserver
 
 import (
+	"context"
 	"log"
 	"sync"
 
@@ -19,13 +20,13 @@ import (
 func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 	mgr := &sessionManager{
 		hub:                  h,
-		participantPrograms: make(map[string]*tea.Program),
+		participantSessions: make(map[string]*trackedSession),
 	}
 
 	go mgr.broadcastLoop()
 
 	opts := []ssh.Option{
-		wish.WithAddress(":"+port),
+		wish.WithAddress(":" + port),
 		wish.WithMiddleware(
 			logging.Middleware(),
 			activeterm.Middleware(),
@@ -43,11 +44,19 @@ func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 	return s
 }
 
+type trackedSession struct {
+	program  *tea.Program
+	cancel   context.CancelFunc
+	username string
+	isHost   bool
+	name     string
+}
+
 type sessionManager struct {
 	mu                  sync.Mutex
 	hostConnected       bool
-	hostProgram         *tea.Program
-	participantPrograms map[string]*tea.Program
+	hostSession         *trackedSession
+	participantSessions map[string]*trackedSession
 	hub                 hub.Hub
 }
 
@@ -58,37 +67,94 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 
 	var model tea.Model
 	var name string
+	var sshUsername string
+
 	if isHost {
-		model = host.NewAppModel(m.hub)
+		sshUsername = "host"
 		name = "host"
+		model = host.NewAppModel(m.hub)
 	} else {
-		name = "Agent-" + s.User()
-		model = participant.NewParticipantModel(m.hub, name)
+		sshUsername = s.User()
+		name = "Agent-" + sshUsername
+		model = participant.NewParticipantModel(m.hub, name, sshUsername)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	program := tea.NewProgram(model, bubbletea.MakeOptions(s)...)
 
+	session := &trackedSession{
+		program:  program,
+		cancel:   cancel,
+		username: sshUsername,
+		isHost:   isHost,
+		name:     name,
+	}
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if isHost {
 		m.hostConnected = true
-		m.hostProgram = program
+		m.hostSession = session
 	} else {
-		m.participantPrograms[name] = program
+		m.participantSessions[name] = session
+	}
+	m.mu.Unlock()
+
+	go m.trackSession(ctx, session)
+
+	if isHost {
+		displayName := m.hub.GetDisplayName("host")
+		if displayName == "" {
+			displayName = "Host"
+		}
+		m.hub.ParticipantUpdateChan() <- hub.Participant{
+			Name:        name,
+			DisplayName: displayName,
+			Status:      hub.StatusIdle,
+			Round:       0,
+		}
+	} else {
+		displayName := m.hub.GetDisplayName(sshUsername)
+		if displayName == "" {
+			displayName = name
+		}
+		m.hub.ParticipantUpdateChan() <- hub.Participant{
+			Name:        name,
+			DisplayName: displayName,
+			Status:      hub.StatusIdle,
+			Round:       0,
+		}
 	}
 
 	return program
 }
 
+func (m *sessionManager) trackSession(ctx context.Context, session *trackedSession) {
+	session.program.Wait()
+
+	m.mu.Lock()
+	if session.isHost {
+		m.hostConnected = false
+		m.hostSession = nil
+	} else {
+		delete(m.participantSessions, session.name)
+	}
+	m.mu.Unlock()
+
+	m.hub.ParticipantUpdateChan() <- hub.Participant{
+		Name:   session.name,
+		Status: hub.StatusDisconnected,
+	}
+}
+
 func (m *sessionManager) broadcastLoop() {
 	for msg := range m.hub.Outbound() {
 		m.mu.Lock()
-		programs := make([]*tea.Program, 0, len(m.participantPrograms)+1)
-		if m.hostProgram != nil {
-			programs = append(programs, m.hostProgram)
+		programs := make([]*tea.Program, 0, len(m.participantSessions)+1)
+		if m.hostSession != nil {
+			programs = append(programs, m.hostSession.program)
 		}
-		for _, p := range m.participantPrograms {
-			programs = append(programs, p)
+		for _, s := range m.participantSessions {
+			programs = append(programs, s.program)
 		}
 		m.mu.Unlock()
 

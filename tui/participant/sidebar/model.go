@@ -112,12 +112,17 @@ func (m Model) View() string {
 		statusStyle := m.styles.statusStyles[p.Status]
 		status := statusStyle.Render(string(p.Status))
 
+		displayName := p.DisplayName
+		if displayName == "" {
+			displayName = p.Name
+		}
+
 		participantStyle := m.styles.participant
-		if p.Name == m.yourName {
+		if displayName == m.yourName {
 			participantStyle = m.styles.yourSelf
 		}
 
-		items = append(items, participantStyle.Render(fmt.Sprintf("%s  %s", p.Name, status)))
+		items = append(items, participantStyle.Render(fmt.Sprintf("%s  %s", displayName, status)))
 	}
 
 	content := strings.Join(items, "\n")

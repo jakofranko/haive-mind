@@ -10,10 +10,11 @@ import (
 type ParticipantStatus string
 
 const (
-	StatusIdle      ParticipantStatus = "idle"
-	StatusTyping    ParticipantStatus = "typing"
-	StatusSubmitted ParticipantStatus = "submitted"
-	StatusReady     ParticipantStatus = "ready"
+	StatusIdle         ParticipantStatus = "idle"
+	StatusTyping       ParticipantStatus = "typing"
+	StatusSubmitted    ParticipantStatus = "submitted"
+	StatusReady        ParticipantStatus = "ready"
+	StatusDisconnected ParticipantStatus = "disconnected"
 )
 
 type MessageType string
@@ -51,7 +52,8 @@ func (m *Message) ToJSON() ([]byte, error) {
 }
 
 type Participant struct {
-	Name   string            `json:"name"`
-	Status ParticipantStatus `json:"status"`
-	Round  int               `json:"round"`
+	Name        string            `json:"name"`
+	DisplayName string            `json:"display_name"`
+	Status      ParticipantStatus `json:"status"`
+	Round       int               `json:"round"`
 }

@@ -3,6 +3,7 @@ package participant
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"jakofranko/haive-mind/hub"
@@ -15,6 +16,7 @@ const (
 	paneTranscript = iota
 	paneSidebar
 	paneResponse
+	paneNamePrompt
 	numPanes
 )
 
@@ -25,33 +27,62 @@ type ParticipantModel struct {
 	activePane int
 	round      int
 	yourName   string
+	sshUsername string
 
-	transcript transcript.Model
-	sidebar    sidebar.Model
-	response   response.Model
+	transcript  transcript.Model
+	sidebar     sidebar.Model
+	response    response.Model
+	namePrompt  textinput.Model
+
+	namePromptActive bool
 }
 
-func NewParticipantModel(hubChans hub.Hub, yourName string) *ParticipantModel {
-	m := &ParticipantModel{
-		hub:        hubChans,
-		activePane: paneTranscript,
-		round:      1,
-		yourName:   yourName,
+func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *ParticipantModel {
+	namePrompt := textinput.New()
+	namePrompt.Placeholder = "Enter display name"
+	namePrompt.Focus()
+	namePrompt.CharLimit = 50
+	namePrompt.Prompt = "> "
+	namePrompt.Width = 40
 
-		transcript: transcript.New(),
-		sidebar:    sidebar.New(),
-		response:   response.New(),
+	m := &ParticipantModel{
+		hub:            hubChans,
+		activePane:     paneTranscript,
+		round:          1,
+		yourName:       yourName,
+		sshUsername:    sshUsername,
+		transcript:     transcript.New(),
+		sidebar:        sidebar.New(),
+		response:       response.New(),
+		namePrompt:     namePrompt,
+		namePromptActive: false,
 	}
 
 	m.sidebar.SetYourName(yourName)
 	m.sidebar.SetParticipants([]hub.Participant{
-		{Name: yourName, Status: hub.StatusIdle, Round: 0},
+		{Name: yourName, DisplayName: yourName, Status: hub.StatusIdle, Round: 0},
 	})
+
+	// Check if we have a stored display name
+	if displayName := hubChans.GetDisplayName(sshUsername); displayName != "" {
+		m.yourName = displayName
+		m.sidebar.SetYourName(displayName)
+		m.sidebar.SetParticipants([]hub.Participant{
+			{Name: displayName, DisplayName: displayName, Status: hub.StatusIdle, Round: 0},
+		})
+	} else {
+		// First time - activate name prompt
+		m.activePane = paneNamePrompt
+		m.namePromptActive = true
+	}
 
 	return m
 }
 
 func (m *ParticipantModel) Init() tea.Cmd {
+	if m.namePromptActive {
+		return textinput.Blink
+	}
 	return tea.Batch(
 		m.transcript.Init(),
 		m.sidebar.Init(),
@@ -189,14 +220,60 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "tab":
-		m.activePane = (m.activePane + 1) % numPanes
-		m.updateActiveStates()
+		if !m.namePromptActive {
+			// Only cycle through transcript, sidebar, response (3 panes)
+			m.activePane = (m.activePane + 1) % 3
+			m.updateActiveStates()
+		}
 		return m, nil
 
 	case "shift+tab":
-		m.activePane = (m.activePane - 1 + numPanes) % numPanes
-		m.updateActiveStates()
+		if !m.namePromptActive {
+			// Only cycle through transcript, sidebar, response (3 panes)
+			m.activePane = (m.activePane - 1 + 3) % 3
+			m.updateActiveStates()
+		}
 		return m, nil
+	}
+
+	// Handle name prompt separately
+	if m.namePromptActive {
+		if keyStr == "enter" {
+			name := strings.TrimSpace(m.namePrompt.Value())
+			if name != "" {
+				m.yourName = name
+				m.hub.SetDisplayName(m.sshUsername, name)
+				m.namePromptActive = false
+				m.activePane = paneTranscript
+				m.namePrompt.Blur()
+				m.sidebar.SetYourName(name)
+				m.sidebar.SetParticipants([]hub.Participant{
+					{Name: name, DisplayName: name, Status: hub.StatusIdle, Round: 0},
+				})
+				// Send participant update to hub so host panel shows this participant
+				m.hub.ParticipantUpdateChan() <- hub.Participant{
+					Name:        name,
+					DisplayName: name,
+					Status:      hub.StatusIdle,
+					Round:       m.round,
+				}
+				return m, tea.Batch(
+					m.transcript.Init(),
+					m.sidebar.Init(),
+					m.response.Init(),
+					m.listenForMessages(),
+					m.listenForParticipantUpdates(),
+					m.listenForRoundChanges(),
+					m.listenForErrors(),
+					m.response.Focus(),
+				)
+			}
+			return m, nil
+		}
+
+		var cmd tea.Cmd
+		m.namePrompt, cmd = m.namePrompt.Update(msg)
+		return m, cmd
 	}
 
 	switch m.activePane {
@@ -244,6 +321,10 @@ func (m *ParticipantModel) layout() {
 }
 
 func (m *ParticipantModel) View() string {
+	if m.namePromptActive {
+		return m.namePromptView()
+	}
+
 	m.layout()
 
 	rightWidth := m.width - m.width*2/3
@@ -252,6 +333,24 @@ func (m *ParticipantModel) View() string {
 
 	rightPane := lipgloss.JoinVertical(lipgloss.Left, rightTop, rightBottom)
 	return lipgloss.JoinHorizontal(lipgloss.Top, m.transcript.View(), rightPane)
+}
+
+func (m *ParticipantModel) namePromptView() string {
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39")).
+		Padding(1, 2)
+
+	promptStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")).
+		Padding(1, 2).
+		Width(60)
+
+	title := titleStyle.Render("Welcome to Haive Mind")
+	prompt := promptStyle.Render("Enter display name:\n\n" + m.namePrompt.View())
+
+	return lipgloss.JoinVertical(lipgloss.Center, title, prompt)
 }
 
 func (m *ParticipantModel) SetYourName(name string) {
