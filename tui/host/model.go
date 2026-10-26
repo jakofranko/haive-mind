@@ -279,7 +279,7 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
 
 	switch keyStr {
-	case "ctrl+c", "q":
+	case "ctrl+c":
 		return m, tea.Quit
 
 	case "tab":
@@ -395,9 +395,7 @@ func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 	}
 
 	msg := hub.NewMessage(hub.MessageTypeDirective, m.yourName, content, m.round)
-	m.hub.Outbound() <- msg
 	m.hub.SendChan() <- msg
-	m.transcript.AddMessage(*msg)
 
 	m.directive.Reset()
 	return m, m.directive.Focus()

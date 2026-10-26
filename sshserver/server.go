@@ -159,7 +159,7 @@ func (m *sessionManager) broadcastLoop() {
 		m.mu.Unlock()
 
 		for _, p := range programs {
-			p.Send(msg)
+			p.Send(*msg)
 		}
 	}
 }
