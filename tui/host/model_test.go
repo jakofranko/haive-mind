@@ -1,7 +1,6 @@
 package host
 
 import (
-	"context"
 	"testing"
 
 	"github.com/charmbracelet/bubbletea"
@@ -9,33 +8,30 @@ import (
 	"jakofranko/haive-mind/hub"
 )
 
-type mockAgentRunner struct {
-	responses map[string]string
-	errors    map[string]error
-}
-
-func (m *mockAgentRunner) Run(ctx context.Context, prompt string) (string, error) {
-	if err, ok := m.errors[prompt]; ok {
-		return "", err
-	}
-	if resp, ok := m.responses[prompt]; ok {
-		return resp, nil
-	}
-	return "default response", nil
-}
-
 func TestAppModel_Init(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	assert.NotNil(t, model)
 	assert.Equal(t, paneTranscript, model.activePane)
 	assert.Equal(t, 1, model.round)
-	assert.Len(t, model.participants.GetParticipants(), 3)
+	assert.Equal(t, "TestHost", model.yourName)
+	assert.Len(t, model.participants.GetParticipants(), 0)
+}
+
+func TestAppModel_Init_NamePrompt(t *testing.T) {
+	hubChans := hub.NewHubChannels()
+	model := NewAppModel(hubChans)
+
+	assert.NotNil(t, model)
+	assert.Equal(t, paneNamePrompt, model.activePane)
+	assert.True(t, model.namePromptActive)
 }
 
 func TestAppModel_Update_WindowSize(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	msg := tea.WindowSizeMsg{Width: 120, Height: 40}
@@ -47,6 +43,7 @@ func TestAppModel_Update_WindowSize(t *testing.T) {
 
 func TestAppModel_Update_TabNavigation(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Initial pane should be transcript
@@ -75,6 +72,7 @@ func TestAppModel_Update_TabNavigation(t *testing.T) {
 
 func TestAppModel_Update_ShiftTabNavigation(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Shift+Tab from transcript should go to buttons
@@ -90,9 +88,7 @@ func TestAppModel_Update_ShiftTabNavigation(t *testing.T) {
 
 func TestAppModel_HandleDirectiveSend(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	hubChans.SetAgentRunner(&mockAgentRunner{
-		responses: map[string]string{"Test directive": "Agent response"},
-	})
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Set directive content via textarea
@@ -110,7 +106,7 @@ func TestAppModel_HandleDirectiveSend(t *testing.T) {
 	case msg := <-hubChans.Outbound():
 		assert.Equal(t, "Test directive", msg.Content)
 		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
-		assert.Equal(t, "host", msg.From)
+		assert.Equal(t, "TestHost", msg.From)
 	default:
 		t.Fatal("Expected message on outbound channel")
 	}
@@ -118,9 +114,7 @@ func TestAppModel_HandleDirectiveSend(t *testing.T) {
 
 func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	hubChans.SetAgentRunner(&mockAgentRunner{
-		responses: map[string]string{"Test directive": "Agent response"},
-	})
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Set directive content
@@ -139,7 +133,7 @@ func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 	case msg := <-hubChans.Outbound():
 		assert.Equal(t, "Test directive", msg.Content)
 		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
-		assert.Equal(t, "host", msg.From)
+		assert.Equal(t, "TestHost", msg.From)
 	default:
 		t.Fatal("Expected message on outbound channel")
 	}
@@ -147,6 +141,7 @@ func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 
 func TestAppModel_AddMessage(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Set viewport dimensions so View() works
@@ -161,19 +156,89 @@ func TestAppModel_AddMessage(t *testing.T) {
 	assert.Contains(t, content, "Round 1")
 }
 
-func TestAppModel_UpdateParticipant(t *testing.T) {
+func TestAppModel_UpdateParticipant_Upsert(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
-	updated := hub.Participant{Name: "Agent-1", Status: hub.StatusTyping, Round: 1}
+	// Add new participant (join)
+	updated := hub.Participant{Name: "Agent-new", DisplayName: "New Agent", Status: hub.StatusTyping, Round: 1}
 	model.participants.UpdateParticipant(updated)
 
-	assert.Equal(t, hub.StatusTyping, model.participants.GetParticipants()[0].Status)
-	assert.Equal(t, 1, model.participants.GetParticipants()[0].Round)
+	participants := model.participants.GetParticipants()
+	assert.Len(t, participants, 1)
+	assert.Equal(t, "Agent-new", participants[0].Name)
+	assert.Equal(t, "New Agent", participants[0].DisplayName)
+	assert.Equal(t, hub.StatusTyping, participants[0].Status)
+	assert.Equal(t, 1, participants[0].Round)
+
+	// Update existing participant
+	updated = hub.Participant{Name: "Agent-new", DisplayName: "New Agent", Status: hub.StatusReady, Round: 1}
+	model.participants.UpdateParticipant(updated)
+
+	participants = model.participants.GetParticipants()
+	assert.Len(t, participants, 1)
+	assert.Equal(t, hub.StatusReady, participants[0].Status)
+}
+
+func TestAppModel_RemoveParticipant(t *testing.T) {
+	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
+	model := NewAppModel(hubChans)
+
+	// Add participants
+	model.participants.UpdateParticipant(hub.Participant{Name: "Agent-1", DisplayName: "Agent One", Status: hub.StatusIdle, Round: 0})
+	model.participants.UpdateParticipant(hub.Participant{Name: "Agent-2", DisplayName: "Agent Two", Status: hub.StatusIdle, Round: 0})
+	assert.Len(t, model.participants.GetParticipants(), 2)
+
+	// Remove one
+	model.participants.RemoveParticipant("Agent-1")
+	participants := model.participants.GetParticipants()
+	assert.Len(t, participants, 1)
+	assert.Equal(t, "Agent-2", participants[0].Name)
+
+	// Remove non-existent (should not panic)
+	model.participants.RemoveParticipant("NonExistent")
+	assert.Len(t, model.participants.GetParticipants(), 1)
+}
+
+func TestAppModel_ParticipantUpdateMsg_Join(t *testing.T) {
+	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
+	model := NewAppModel(hubChans)
+
+	// Simulate participant join via ParticipantUpdateChan message
+	joinMsg := hub.Participant{Name: "Agent-user1", DisplayName: "User One", Status: hub.StatusIdle, Round: 0}
+	updatedModel, _ := model.Update(participantUpdateMsg(joinMsg))
+	model = updatedModel.(*AppModel)
+
+	participants := model.participants.GetParticipants()
+	assert.Len(t, participants, 1)
+	assert.Equal(t, "Agent-user1", participants[0].Name)
+	assert.Equal(t, "User One", participants[0].DisplayName)
+}
+
+func TestAppModel_ParticipantUpdateMsg_Leave(t *testing.T) {
+	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
+	model := NewAppModel(hubChans)
+
+	// First add a participant
+	model.participants.UpdateParticipant(hub.Participant{Name: "Agent-user1", DisplayName: "User One", Status: hub.StatusIdle, Round: 0})
+	assert.Len(t, model.participants.GetParticipants(), 1)
+
+	// Simulate participant leave via ParticipantUpdateChan message
+	leaveMsg := hub.Participant{Name: "Agent-user1", Status: hub.StatusDisconnected}
+	updatedModel, _ := model.Update(participantUpdateMsg(leaveMsg))
+	model = updatedModel.(*AppModel)
+
+	participants := model.participants.GetParticipants()
+	assert.Len(t, participants, 0)
 }
 
 func TestAppModel_View_RendersWithoutPanic(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Simulate window size
@@ -192,13 +257,14 @@ func TestAppModel_View_RendersWithoutPanic(t *testing.T) {
 
 func TestAppModel_CtrlEnterInDirective(t *testing.T) {
 	hubChans := hub.NewHubChannels()
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.activePane = paneDirective
 	model.directive.SetValue("Line 1")
 
 	// Ctrl+Enter should add newline - simulate with key msg
-	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'\x05'}}) // Ctrl+E as proxy
+	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'\x05'}})
 	model = updatedModel.(*AppModel)
 
 	// Actually test that textarea handles it - we can't easily simulate Ctrl+Enter in tests
@@ -206,54 +272,35 @@ func TestAppModel_CtrlEnterInDirective(t *testing.T) {
 	assert.Equal(t, "Line 1", model.directive.Value())
 }
 
-func TestAppModel_AgentLoop_Success(t *testing.T) {
+func TestAppModel_NamePrompt_Flow(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	hubChans.SetAgentRunner(&mockAgentRunner{
-		responses: map[string]string{
-			"Test directive": "Agent-1 response",
-		},
-	})
 	model := NewAppModel(hubChans)
 
-	// Send directive
-	model.directive.SetValue("Test directive")
-	model.activePane = paneDirective
+	assert.True(t, model.namePromptActive)
+	assert.Equal(t, paneNamePrompt, model.activePane)
+
+	// Simulate typing a name
+	model.namePrompt.SetValue("John Doe")
+
+	// Simulate pressing Enter
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updatedModel.(*AppModel)
 
-	// Verify directive was sent
-	select {
-	case msg := <-hubChans.Outbound():
-		assert.Equal(t, "Test directive", msg.Content)
-		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
-	default:
-		t.Fatal("Expected directive on outbound")
-	}
-
-	// Verify agent loop state was initialized
-	assert.Equal(t, "Test directive", model.pendingDirective)
-	assert.Equal(t, 0, model.currentAgentIdx)
+	assert.False(t, model.namePromptActive)
+	assert.Equal(t, paneTranscript, model.activePane)
+	assert.Equal(t, "John Doe", model.yourName)
+	assert.Equal(t, "John Doe", hubChans.GetDisplayName("host"))
 }
 
-func TestAppModel_AgentLoop_ErrorShowsToast(t *testing.T) {
+func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
 	hubChans := hub.NewHubChannels()
-	hubChans.SetAgentRunner(&mockAgentRunner{
-		errors: map[string]error{
-			"Test directive": assert.AnError,
-		},
-	})
+	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
-	// Send directive
-	model.directive.SetValue("Test directive")
-	model.activePane = paneDirective
+	model.activePane = paneButtons
+	model.buttons.SetButtonIndex(2) // New Round
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updatedModel.(*AppModel)
 
-	// Verify agent loop state was initialized
-	assert.Equal(t, "Test directive", model.pendingDirective)
-	assert.Equal(t, 0, model.currentAgentIdx)
-
-	// Verify toast model is initialized
-	assert.NotNil(t, model.toast)
+	assert.Equal(t, 2, model.round)
 }

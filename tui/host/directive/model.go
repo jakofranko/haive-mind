@@ -122,3 +122,7 @@ func (m *Model) SetValue(value string) {
 func (m *Model) Reset() {
 	m.input.Reset()
 }
+
+func (m *Model) Focus() tea.Cmd {
+	return m.input.Focus()
+}

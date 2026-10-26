@@ -55,12 +55,8 @@ func defaultStyles() Styles {
 
 func New() Model {
 	return Model{
-		participants: []hub.Participant{
-			{Name: "Agent-1", Status: hub.StatusIdle, Round: 0},
-			{Name: "Agent-2", Status: hub.StatusIdle, Round: 0},
-			{Name: "Agent-3", Status: hub.StatusIdle, Round: 0},
-		},
-		styles: defaultStyles(),
+		participants: []hub.Participant{},
+		styles:       defaultStyles(),
 	}
 }
 
@@ -79,7 +75,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case participantUpdateMsg:
-		m.updateParticipant(hub.Participant(msg))
+		m.UpdateParticipant(hub.Participant(msg))
 		return m, nil
 
 	case roundChangedMsg:
@@ -88,15 +84,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-func (m *Model) updateParticipant(updated hub.Participant) {
-	for i, p := range m.participants {
-		if p.Name == updated.Name {
-			m.participants[i] = updated
-			break
-		}
-	}
 }
 
 func (m Model) View() string {
@@ -116,7 +103,12 @@ func (m Model) View() string {
 		if displayName == "" {
 			displayName = p.Name
 		}
-		items = append(items, m.styles.participant.Render(fmt.Sprintf("%s  %s", displayName, status)))
+
+		prefix := ""
+		if p.Name == "host" {
+			prefix = "👑 "
+		}
+		items = append(items, m.styles.participant.Render(fmt.Sprintf("%s%s  %s", prefix, displayName, status)))
 	}
 
 	content := strings.Join(items, "\n")
@@ -140,6 +132,17 @@ func (m *Model) UpdateParticipant(updated hub.Participant) {
 	for i, p := range m.participants {
 		if p.Name == updated.Name {
 			m.participants[i] = updated
+			return
+		}
+	}
+	// Not found - append (join)
+	m.participants = append(m.participants, updated)
+}
+
+func (m *Model) RemoveParticipant(name string) {
+	for i, p := range m.participants {
+		if p.Name == name {
+			m.participants = append(m.participants[:i], m.participants[i+1:]...)
 			break
 		}
 	}

@@ -250,6 +250,13 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.sidebar.SetParticipants([]hub.Participant{
 					{Name: name, DisplayName: name, Status: hub.StatusIdle, Round: 0},
 				})
+				// Send participant update to hub so host panel shows this participant
+				m.hub.ParticipantUpdateChan() <- hub.Participant{
+					Name:        name,
+					DisplayName: name,
+					Status:      hub.StatusIdle,
+					Round:       m.round,
+				}
 				return m, tea.Batch(
 					m.transcript.Init(),
 					m.sidebar.Init(),

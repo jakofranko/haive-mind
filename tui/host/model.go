@@ -1,10 +1,10 @@
 package host
 
 import (
-	"context"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"jakofranko/haive-mind/hub"
@@ -20,6 +20,7 @@ const (
 	paneParticipants
 	paneDirective
 	paneButtons
+	paneNamePrompt
 	numPanes
 )
 
@@ -30,6 +31,8 @@ type AppModel struct {
 	height     int
 	activePane int
 	round      int
+	yourName   string
+	sshUsername string
 
 	// Child models
 	transcript   transcript.Model
@@ -38,36 +41,50 @@ type AppModel struct {
 	buttons      buttons.Model
 	toast        toast.Model
 
-	// Agent loop state
-	pendingDirective string
-	pendingAgents    []string
-	currentAgentIdx  int
+	// Name prompt
+	namePrompt     textinput.Model
+	namePromptActive bool
 }
 
 func NewAppModel(hubChans hub.Hub) *AppModel {
+	namePrompt := textinput.New()
+	namePrompt.Placeholder = "Enter display name"
+	namePrompt.Focus()
+	namePrompt.CharLimit = 50
+	namePrompt.Prompt = "> "
+	namePrompt.Width = 40
+
 	m := &AppModel{
-		hub:           hubChans,
-		activePane:    paneTranscript,
-		round:         1,
-		transcript:    transcript.New(),
-		participants:  participants.New(),
-		directive:     directive.New(),
-		buttons:       buttons.New(),
-		toast:         toast.New(),
-		pendingAgents: []string{"Agent-1", "Agent-2", "Agent-3"},
+		hub:            hubChans,
+		activePane:     paneTranscript,
+		round:          1,
+		yourName:       "Host",
+		sshUsername:    "host",
+		transcript:     transcript.New(),
+		participants:   participants.New(),
+		directive:      directive.New(),
+		buttons:        buttons.New(),
+		toast:          toast.New(),
+		namePrompt:     namePrompt,
+		namePromptActive: false,
 	}
 
-	// Set initial participants
-	m.participants.SetParticipants([]hub.Participant{
-		{Name: "Agent-1", Status: hub.StatusIdle, Round: 0},
-		{Name: "Agent-2", Status: hub.StatusIdle, Round: 0},
-		{Name: "Agent-3", Status: hub.StatusIdle, Round: 0},
-	})
+	// Check if we have a stored display name
+	if displayName := hubChans.GetDisplayName("host"); displayName != "" {
+		m.yourName = displayName
+	} else {
+		// First time - activate name prompt
+		m.activePane = paneNamePrompt
+		m.namePromptActive = true
+	}
 
 	return m
 }
 
 func (m *AppModel) Init() tea.Cmd {
+	if m.namePromptActive {
+		return textinput.Blink
+	}
 	return tea.Batch(
 		m.transcript.Init(),
 		m.participants.Init(),
@@ -87,12 +104,6 @@ type participantUpdateMsg hub.Participant
 type roundChangedMsg int
 type exportCompleteMsg string
 type errorMsg error
-type runNextAgentMsg string
-type agentResponseMsg struct {
-	agentName string
-	response  string
-	err       error
-}
 
 func (m *AppModel) listenForMessages() tea.Cmd {
 	return func() tea.Msg {
@@ -137,7 +148,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.layout()
-		// Forward to all children
 		cmds = append(cmds, m.forwardToChildren(msg)...)
 		updatedToast, cmd := m.toast.Update(msg)
 		m.toast = updatedToast.(toast.Model)
@@ -147,7 +157,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
-		// Let toast handle keys first if visible
 		if m.toast.IsVisible() {
 			updatedToast, cmd := m.toast.Update(msg)
 			m.toast = updatedToast.(toast.Model)
@@ -166,7 +175,12 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case participantUpdateMsg:
-		m.participants.UpdateParticipant(hub.Participant(msg))
+		p := hub.Participant(msg)
+		if p.Status == hub.StatusDisconnected {
+			m.participants.RemoveParticipant(p.Name)
+		} else {
+			m.participants.UpdateParticipant(p)
+		}
 		cmds = append(cmds, m.listenForParticipantUpdates())
 		return m, tea.Batch(cmds...)
 
@@ -185,15 +199,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.transcript.AddSystemMessage("Error: " + msg.Error())
 		cmds = append(cmds, m.listenForErrors())
 		return m, tea.Batch(cmds...)
-
-	case runNextAgentMsg:
-		return m.runNextAgent(string(msg))
-
-	case agentResponseMsg:
-		return m.handleAgentResponse(msg)
 	}
 
-	// Forward unhandled messages to focused child
 	cmds = append(cmds, m.forwardToFocused(msg)...)
 	return m, tea.Batch(cmds...)
 }
@@ -271,30 +278,69 @@ func (m *AppModel) forwardToFocused(msg tea.Msg) []tea.Cmd {
 func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
 
-	// Global pane navigation
 	switch keyStr {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 
 	case "tab":
-		m.activePane = (m.activePane + 1) % numPanes
-		m.updateActiveStates()
+		if !m.namePromptActive {
+			m.activePane = (m.activePane + 1) % (numPanes - 1) // Exclude namePrompt pane
+			m.updateActiveStates()
+		}
 		return m, nil
 
 	case "shift+tab":
-		m.activePane = (m.activePane - 1 + numPanes) % numPanes
-		m.updateActiveStates()
+		if !m.namePromptActive {
+			m.activePane = (m.activePane - 1 + (numPanes - 1)) % (numPanes - 1)
+			m.updateActiveStates()
+		}
 		return m, nil
 	}
 
-	// Pane-specific handling
+	// Handle name prompt separately
+	if m.namePromptActive {
+		if keyStr == "enter" {
+			name := strings.TrimSpace(m.namePrompt.Value())
+			if name != "" {
+				m.yourName = name
+				m.hub.SetDisplayName("host", name)
+				m.namePromptActive = false
+				m.activePane = paneTranscript
+				m.namePrompt.Blur()
+				// Send participant update so host panel refreshes
+				m.hub.ParticipantUpdateChan() <- hub.Participant{
+					Name:        "host",
+					DisplayName: name,
+					Status:      hub.StatusIdle,
+					Round:       m.round,
+				}
+				return m, tea.Batch(
+					m.transcript.Init(),
+					m.participants.Init(),
+					m.directive.Init(),
+					m.buttons.Init(),
+					m.toast.Init(),
+					m.listenForMessages(),
+					m.listenForParticipantUpdates(),
+					m.listenForRoundChanges(),
+					m.listenForExportComplete(),
+					m.listenForErrors(),
+					m.directive.Focus(),
+				)
+			}
+			return m, nil
+		}
+
+		var cmd tea.Cmd
+		m.namePrompt, cmd = m.namePrompt.Update(msg)
+		return m, cmd
+	}
+
 	switch m.activePane {
 	case paneDirective:
-		// Intercept Enter (without Ctrl) to send directive
 		if keyStr == "enter" && !isCtrlPressed(msg) {
 			return m.handleDirectiveSend()
 		}
-		// Forward to directive model - always update child state
 		if model, cmd := m.directive.Update(msg); true {
 			m.directive = model.(directive.Model)
 			if cmd != nil {
@@ -307,7 +353,6 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if keyStr == "enter" {
 			return m.handleButtonPress()
 		}
-		// Forward left/right to buttons model - always update child state
 		if model, cmd := m.buttons.Update(msg); true {
 			m.buttons = model.(buttons.Model)
 			if cmd != nil {
@@ -317,7 +362,6 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case paneTranscript:
-		// Forward to transcript model - always update child state
 		if model, cmd := m.transcript.Update(msg); true {
 			m.transcript = model.(transcript.Model)
 			if cmd != nil {
@@ -327,7 +371,6 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case paneParticipants:
-		// Participants pane is read-only for now
 		return m, nil
 	}
 
@@ -351,80 +394,13 @@ func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	msg := hub.NewMessage(hub.MessageTypeDirective, "host", content, m.round)
-	m.hub.Outbound() <- msg // For local transcript display
-	m.hub.SendChan() <- msg // For hub to send to agents
+	msg := hub.NewMessage(hub.MessageTypeDirective, m.yourName, content, m.round)
+	m.hub.Outbound() <- msg
+	m.hub.SendChan() <- msg
 	m.transcript.AddMessage(*msg)
 
 	m.directive.Reset()
-
-	// Start agent loop
-	m.pendingDirective = content
-	m.currentAgentIdx = 0
-	return m, func() tea.Msg {
-		return runNextAgentMsg(m.pendingAgents[0])
-	}
-}
-
-func (m *AppModel) runNextAgent(agentName string) (tea.Model, tea.Cmd) {
-	if m.currentAgentIdx >= len(m.pendingAgents) {
-		// All agents done, advance round
-		m.round++
-		m.hub.NewRoundChan() <- m.round
-		m.pendingDirective = ""
-		return m, nil
-	}
-
-	agent := m.pendingAgents[m.currentAgentIdx]
-	// Update participant status to typing
-	m.hub.ParticipantUpdateChan() <- hub.Participant{Name: agent, Status: hub.StatusTyping, Round: m.round}
-
-	return m, func() tea.Msg {
-		ctx := context.Background()
-		response, err := m.hub.SendToAgent(ctx, m.pendingDirective)
-		return agentResponseMsg{agentName: agent, response: response, err: err}
-	}
-}
-
-func (m *AppModel) handleAgentResponse(msg agentResponseMsg) (tea.Model, tea.Cmd) {
-	agent := msg.agentName
-
-	if msg.err != nil {
-		// Show toast with retry
-		m.hub.ParticipantUpdateChan() <- hub.Participant{Name: agent, Status: hub.StatusIdle, Round: m.round}
-		return m, toast.ShowToast(
-			"Agent "+agent+" failed: "+msg.err.Error(),
-			true,
-			func() tea.Cmd {
-				return func() tea.Msg {
-					return runNextAgentMsg(agent)
-				}
-			},
-		)
-	}
-
-	// Success - add response to transcript and broadcast
-	responseMsg := hub.NewMessage(hub.MessageTypeResponse, agent, msg.response, m.round)
-	m.hub.Outbound() <- responseMsg
-	m.transcript.AddMessage(*responseMsg)
-
-	// Update participant status
-	m.hub.ParticipantUpdateChan() <- hub.Participant{Name: agent, Status: hub.StatusReady, Round: m.round}
-
-	// Move to next agent
-	m.currentAgentIdx++
-	if m.currentAgentIdx < len(m.pendingAgents) {
-		nextAgent := m.pendingAgents[m.currentAgentIdx]
-		return m, func() tea.Msg {
-			return runNextAgentMsg(nextAgent)
-		}
-	}
-
-	// All agents done, advance round
-	m.round++
-	m.hub.NewRoundChan() <- m.round
-	m.pendingDirective = ""
-	return m, nil
+	return m, m.directive.Focus()
 }
 
 func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
@@ -448,10 +424,8 @@ func (m *AppModel) layout() {
 	leftWidth := m.width / 2
 	rightWidth := m.width - leftWidth
 
-	// Left: transcript full height
 	m.transcript.SetSize(leftWidth, m.height)
 
-	// Right: 3 equal panes
 	rightPaneHeight := (m.height - 4) / 3
 	if rightPaneHeight < 4 {
 		rightPaneHeight = 4
@@ -463,6 +437,10 @@ func (m *AppModel) layout() {
 }
 
 func (m *AppModel) View() string {
+	if m.namePromptActive {
+		return m.namePromptView()
+	}
+
 	m.layout()
 
 	rightWidth := m.width - m.width/2
@@ -473,10 +451,27 @@ func (m *AppModel) View() string {
 	rightPane := lipgloss.JoinVertical(lipgloss.Left, rightTop, rightMid, rightBottom)
 	mainView := lipgloss.JoinHorizontal(lipgloss.Top, m.transcript.View(), rightPane)
 
-	// Add toast overlay
 	toastView := m.toast.View()
 	if toastView != "" {
 		return lipgloss.JoinVertical(lipgloss.Left, mainView, toastView)
 	}
 	return mainView
+}
+
+func (m *AppModel) namePromptView() string {
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39")).
+		Padding(1, 2)
+
+	promptStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")).
+		Padding(1, 2).
+		Width(60)
+
+	title := titleStyle.Render("Welcome to Haive Mind (Host)")
+	prompt := promptStyle.Render("Enter display name:\n\n" + m.namePrompt.View())
+
+	return lipgloss.JoinVertical(lipgloss.Center, title, prompt)
 }
