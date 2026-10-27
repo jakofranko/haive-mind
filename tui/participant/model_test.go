@@ -90,20 +90,11 @@ func TestParticipantModel_HandleResponseSubmit(t *testing.T) {
 	assert.Equal(t, "", model.response.Value())
 
 	select {
-	case msg := <-hubChans.Outbound():
-		assert.Equal(t, "Test response", msg.Content)
-		assert.Equal(t, hub.MessageTypeResponse, msg.Type)
-		assert.Equal(t, "Agent-1", msg.From)
-		assert.Equal(t, 1, msg.Round)
-	default:
-		t.Fatal("Expected message on outbound channel")
-	}
-
-	select {
 	case msg := <-hubChans.SendChan():
 		assert.Equal(t, "Test response", msg.Content)
 		assert.Equal(t, hub.MessageTypeResponse, msg.Type)
 		assert.Equal(t, "Agent-1", msg.From)
+		assert.Equal(t, 1, msg.Round)
 	default:
 		t.Fatal("Expected message on send channel")
 	}
@@ -120,12 +111,6 @@ func TestParticipantModel_HandleResponseSubmit_Empty(t *testing.T) {
 	model = updatedModel.(*ParticipantModel)
 
 	assert.Equal(t, "   ", model.response.Value())
-
-	select {
-	case <-hubChans.Outbound():
-		t.Fatal("Should not send empty message")
-	default:
-	}
 
 	select {
 	case <-hubChans.SendChan():

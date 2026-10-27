@@ -216,7 +216,7 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
 
 	switch keyStr {
-	case "ctrl+c", "q":
+	case "ctrl+c":
 		return m, tea.Quit
 
 	case "tab":
@@ -297,9 +297,7 @@ func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
 	}
 
 	msg := hub.NewMessage(hub.MessageTypeResponse, m.yourName, content, m.round)
-	m.hub.Outbound() <- msg
 	m.hub.SendChan() <- msg
-	m.transcript.AddMessage(*msg)
 
 	m.response.Reset()
 	return m, m.response.Focus()

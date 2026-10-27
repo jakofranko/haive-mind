@@ -101,14 +101,14 @@ func TestAppModel_HandleDirectiveSend(t *testing.T) {
 
 	// Directive should be cleared
 	assert.Equal(t, "", model.directive.Value())
-	// Message should be sent to outbound channel
+	// Message should be sent to send channel
 	select {
-	case msg := <-hubChans.Outbound():
+	case msg := <-hubChans.SendChan():
 		assert.Equal(t, "Test directive", msg.Content)
 		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
 		assert.Equal(t, "TestHost", msg.From)
 	default:
-		t.Fatal("Expected message on outbound channel")
+		t.Fatal("Expected message on send channel")
 	}
 }
 
@@ -128,14 +128,14 @@ func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 
 	// Directive should be cleared (sent)
 	assert.Equal(t, "", model.directive.Value())
-	// Message should be sent to outbound channel
+	// Message should be sent to send channel
 	select {
-	case msg := <-hubChans.Outbound():
+	case msg := <-hubChans.SendChan():
 		assert.Equal(t, "Test directive", msg.Content)
 		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
 		assert.Equal(t, "TestHost", msg.From)
 	default:
-		t.Fatal("Expected message on outbound channel")
+		t.Fatal("Expected message on send channel")
 	}
 }
 
