@@ -146,9 +146,11 @@ func (m *Model) UpdateParticipant(updated hub.Participant) {
 	for i, p := range m.participants {
 		if p.Name == updated.Name {
 			m.participants[i] = updated
-			break
+			return
 		}
 	}
+	// Participant not found, add them
+	m.participants = append(m.participants, updated)
 }
 
 func (m *Model) SetRound(round int) {

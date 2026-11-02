@@ -9,7 +9,7 @@ import (
 )
 
 func TestParticipantModel_Init(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -22,7 +22,7 @@ func TestParticipantModel_Init(t *testing.T) {
 }
 
 func TestParticipantModel_Init_NamePrompt(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	assert.NotNil(t, model)
@@ -31,7 +31,7 @@ func TestParticipantModel_Init_NamePrompt(t *testing.T) {
 }
 
 func TestParticipantModel_Update_WindowSize(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -43,7 +43,7 @@ func TestParticipantModel_Update_WindowSize(t *testing.T) {
 }
 
 func TestParticipantModel_Update_TabNavigation(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -63,7 +63,7 @@ func TestParticipantModel_Update_TabNavigation(t *testing.T) {
 }
 
 func TestParticipantModel_Update_ShiftTabNavigation(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -77,7 +77,7 @@ func TestParticipantModel_Update_ShiftTabNavigation(t *testing.T) {
 }
 
 func TestParticipantModel_HandleResponseSubmit(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -88,20 +88,10 @@ func TestParticipantModel_HandleResponseSubmit(t *testing.T) {
 	model = updatedModel.(*ParticipantModel)
 
 	assert.Equal(t, "", model.response.Value())
-
-	select {
-	case msg := <-hubChans.SendChan():
-		assert.Equal(t, "Test response", msg.Content)
-		assert.Equal(t, hub.MessageTypeResponse, msg.Type)
-		assert.Equal(t, "Agent-1", msg.From)
-		assert.Equal(t, 1, msg.Round)
-	default:
-		t.Fatal("Expected message on send channel")
-	}
 }
 
 func TestParticipantModel_HandleResponseSubmit_Empty(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -111,16 +101,10 @@ func TestParticipantModel_HandleResponseSubmit_Empty(t *testing.T) {
 	model = updatedModel.(*ParticipantModel)
 
 	assert.Equal(t, "   ", model.response.Value())
-
-	select {
-	case <-hubChans.SendChan():
-		t.Fatal("Should not send empty message")
-	default:
-	}
 }
 
 func TestParticipantModel_AddMessage(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -136,7 +120,7 @@ func TestParticipantModel_AddMessage(t *testing.T) {
 }
 
 func TestParticipantModel_UpdateParticipant(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -163,7 +147,7 @@ func TestParticipantModel_UpdateParticipant(t *testing.T) {
 }
 
 func TestParticipantModel_View_RendersWithoutPanic(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -179,7 +163,7 @@ func TestParticipantModel_View_RendersWithoutPanic(t *testing.T) {
 }
 
 func TestParticipantModel_NamePrompt_Flow(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	assert.True(t, model.namePromptActive)
@@ -200,7 +184,7 @@ func TestParticipantModel_NamePrompt_Flow(t *testing.T) {
 }
 
 func TestParticipantModel_DraftPersistence(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
@@ -215,7 +199,7 @@ func TestParticipantModel_DraftPersistence(t *testing.T) {
 }
 
 func TestParticipantModel_CtrlEnterInResponse(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 

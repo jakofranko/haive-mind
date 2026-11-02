@@ -19,7 +19,7 @@ func main() {
 		sshUsername = os.Args[2]
 	}
 
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	model := participant.NewParticipantModel(hubChans, yourName, sshUsername)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())

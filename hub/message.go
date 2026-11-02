@@ -20,10 +20,15 @@ const (
 type MessageType string
 
 const (
-	MessageTypeDirective MessageType = "directive"
-	MessageTypeResponse  MessageType = "response"
-	MessageTypeSystem    MessageType = "system"
-	MessageTypeAggregate MessageType = "aggregate"
+	MessageTypeDirective       MessageType = "directive"
+	MessageTypeResponse        MessageType = "response"
+	MessageTypeSystem          MessageType = "system"
+	MessageTypeAggregate       MessageType = "aggregate"
+	MessageTypeNewRound        MessageType = "new_round"
+	MessageTypeRoundChange     MessageType = "round_change"
+	MessageTypeExport          MessageType = "export"
+	MessageTypeExportComplete  MessageType = "export_complete"
+	MessageTypeParticipantEvent MessageType = "participant_event"
 )
 
 type Message struct {
@@ -56,4 +61,21 @@ type Participant struct {
 	DisplayName string            `json:"display_name"`
 	Status      ParticipantStatus `json:"status"`
 	Round       int               `json:"round"`
+	Event       string            `json:"event,omitempty"` // "connect", "disconnect", "status_change"
+}
+
+const (
+	ParticipantEventConnect      = "connect"
+	ParticipantEventDisconnect   = "disconnect"
+	ParticipantEventStatusChange = "status_change"
+)
+
+func NewParticipantEvent(name, displayName string, status ParticipantStatus, round int, event string) *Participant {
+	return &Participant{
+		Name:        name,
+		DisplayName: displayName,
+		Status:      status,
+		Round:       round,
+		Event:       event,
+	}
 }

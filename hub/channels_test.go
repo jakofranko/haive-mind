@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"jakofranko/haive-mind/agent"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -25,64 +26,249 @@ func (m *mockAgentRunner) Run(ctx context.Context, prompt string) (string, error
 	return m.response, m.err
 }
 
-func TestHubChannels_SendToAgent_Success(t *testing.T) {
-	hubChans := NewHubChannels()
+func TestHub_Send_Success(t *testing.T) {
+	hubChans := NewHub()
 	hubChans.SetAgentRunner(&mockAgentRunner{response: "Agent response"})
 
-	ctx := context.Background()
-	response, err := hubChans.SendToAgent(ctx, "test prompt")
+	if err := hubChans.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	defer hubChans.Stop()
 
+	ctx := context.Background()
+	msg := NewMessage(MessageTypeDirective, "Host", "test prompt", 1)
+
+	err := hubChans.Send(ctx, msg)
 	assert.NoError(t, err)
-	assert.Equal(t, "Agent response", response)
 }
 
-func TestHubChannels_SendToAgent_Error(t *testing.T) {
-	hubChans := NewHubChannels()
-	hubChans.SetAgentRunner(&mockAgentRunner{err: assert.AnError})
+func TestHub_SubscribeAndSend(t *testing.T) {
+	hubChans := NewHub()
+
+	if err := hubChans.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	defer hubChans.Stop()
 
 	ctx := context.Background()
-	response, err := hubChans.SendToAgent(ctx, "test prompt")
+	messagesReceived := make(chan *Message, 10)
 
-	assert.Error(t, err)
-	assert.Empty(t, response)
-}
-
-func TestHubChannels_SendToAgent_Timeout(t *testing.T) {
-	hubChans := NewHubChannels()
-	hubChans.SetAgentRunner(&mockAgentRunner{delay: 100 * time.Millisecond})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-
-	response, err := hubChans.SendToAgent(ctx, "test prompt")
-
-	assert.Error(t, err)
-	assert.Empty(t, response)
-	assert.Equal(t, context.DeadlineExceeded, err)
-}
-
-func TestHubChannels_SendToAgent_UsesPrompt(t *testing.T) {
-	hubChans := NewHubChannels()
-	hubChans.SetAgentRunner(&mockAgentRunner{
-		response: "ok",
-		err:      nil,
+	sub, err := hubChans.Subscribe(ctx, MessageTypeDirective, func(msg *Message) error {
+		messagesReceived <- msg
+		return nil
 	})
+	assert.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	msg := NewMessage(MessageTypeDirective, "Host", "test prompt", 1)
+	err = hubChans.Send(ctx, msg)
+	assert.NoError(t, err)
+
+	select {
+	case received := <-messagesReceived:
+		assert.Equal(t, "test prompt", received.Content)
+		assert.Equal(t, MessageTypeDirective, received.Type)
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Timeout waiting for message")
+	}
+}
+
+func TestHub_RequestAggregate(t *testing.T) {
+	hubChans := NewHub()
+
+	if err := hubChans.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	defer hubChans.Stop()
 
 	ctx := context.Background()
-	_, err := hubChans.SendToAgent(ctx, "specific prompt")
+	aggregatesReceived := make(chan *Message, 10)
 
-	// We can't directly verify the prompt was passed without more complex mocking
-	// but we can verify the method doesn't panic
+	sub, err := hubChans.Subscribe(ctx, MessageTypeAggregate, func(msg *Message) error {
+		aggregatesReceived <- msg
+		return nil
+	})
 	assert.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	err = hubChans.RequestAggregate(1)
+	assert.NoError(t, err)
+
+	select {
+	case received := <-aggregatesReceived:
+		assert.Equal(t, 1, received.Round)
+		assert.Equal(t, MessageTypeAggregate, received.Type)
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Timeout waiting for aggregate")
+	}
+}
+
+func TestHub_StartRound(t *testing.T) {
+	hubChans := NewHub()
+
+	if err := hubChans.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	defer hubChans.Stop()
+
+	ctx := context.Background()
+	roundsReceived := make(chan *Message, 10)
+
+	sub, err := hubChans.Subscribe(ctx, MessageTypeNewRound, func(msg *Message) error {
+		roundsReceived <- msg
+		return nil
+	})
+	assert.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	err = hubChans.StartRound(2)
+	assert.NoError(t, err)
+
+	select {
+	case received := <-roundsReceived:
+		assert.Equal(t, 2, received.Round)
+		assert.Equal(t, MessageTypeNewRound, received.Type)
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Timeout waiting for new round")
+	}
+}
+
+func TestHub_Export(t *testing.T) {
+	hubChans := NewHub()
+
+	if err := hubChans.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	defer hubChans.Stop()
+
+	ctx := context.Background()
+	exportsReceived := make(chan *Message, 10)
+
+	sub, err := hubChans.Subscribe(ctx, MessageTypeExport, func(msg *Message) error {
+		exportsReceived <- msg
+		return nil
+	})
+	assert.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	err = hubChans.Export("test.json")
+	assert.NoError(t, err)
+
+	select {
+	case received := <-exportsReceived:
+		assert.Equal(t, "test.json", received.Content)
+		assert.Equal(t, MessageTypeExport, received.Type)
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Timeout waiting for export")
+	}
+}
+
+func TestHub_RegisterUnregisterParticipant(t *testing.T) {
+	hubChans := NewHub()
+
+	if err := hubChans.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	defer hubChans.Stop()
+
+	ctx := context.Background()
+	participantEvents := make(chan *Message, 10)
+
+	sub, err := hubChans.Subscribe(ctx, MessageTypeParticipantEvent, func(msg *Message) error {
+		participantEvents <- msg
+		return nil
+	})
+	assert.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	// Register
+	p := NewParticipantEvent("host", "Host", StatusIdle, 1, ParticipantEventConnect)
+	err = hubChans.RegisterParticipant(p)
+	assert.NoError(t, err)
+
+	participants := hubChans.GetParticipants()
+	assert.Len(t, participants, 1)
+
+	// Wait for event
+	select {
+	case event := <-participantEvents:
+		assert.Equal(t, "host", event.ID)
+		assert.Equal(t, ParticipantEventConnect, event.Content)
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Timeout waiting for participant event")
+	}
+
+	// Unregister
+	err = hubChans.UnregisterParticipant("host")
+	assert.NoError(t, err)
+
+	participants = hubChans.GetParticipants()
+	assert.Len(t, participants, 0)
+
+	// Wait for event
+	select {
+	case event := <-participantEvents:
+		assert.Equal(t, "host", event.ID)
+		assert.Equal(t, ParticipantEventDisconnect, event.Content)
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Timeout waiting for participant disconnect event")
+	}
+}
+
+func TestHub_SetDisplayName(t *testing.T) {
+	hubChans := NewHub()
+
+	if err := hubChans.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	defer hubChans.Stop()
+
+	hubChans.SetDisplayName("host", "TestHost")
+	assert.Equal(t, "TestHost", hubChans.GetDisplayName("host"))
+	assert.Equal(t, "", hubChans.GetDisplayName("unknown"))
+}
+
+func TestHub_SetAgentRunner(t *testing.T) {
+	hubChans := NewHub()
+
+	if err := hubChans.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	defer hubChans.Stop()
+
+	ctx := context.Background()
+	mockRunner := &mockAgentRunner{response: "Custom agent response"}
+	hubChans.SetAgentRunner(mockRunner)
+
+	agentReplies := make(chan *Message, 10)
+	sub, err := hubChans.Subscribe(ctx, MessageTypeResponse, func(msg *Message) error {
+		agentReplies <- msg
+		return nil
+	})
+	assert.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	// Send a directive - hub should invoke agent internally
+	msg := NewMessage(MessageTypeDirective, "Host", "test prompt", 1)
+	err = hubChans.Send(ctx, msg)
+	assert.NoError(t, err)
+
+	select {
+	case reply := <-agentReplies:
+		assert.Equal(t, "Custom agent response", reply.Content)
+		assert.Equal(t, "agent", reply.From)
+	case <-time.After(1 * time.Second):
+		t.Error("Timeout waiting for agent reply")
+	}
 }
 
 func TestAgentError_Code(t *testing.T) {
-	err := &AgentError{code: "test_code", message: "test message"}
+	err := agent.NewAgentError("test_code", "test message")
 	assert.Equal(t, "test_code", err.Code())
 	assert.Equal(t, "test message", err.Error())
 }
 
 func TestErrAgentTimeout(t *testing.T) {
-	assert.Equal(t, "agent timed out", ErrAgentTimeout.Error())
-	assert.Equal(t, "timeout", ErrAgentTimeout.Code())
+	assert.Equal(t, "agent timed out", agent.ErrAgentTimeout.Error())
+	assert.Equal(t, "timeout", agent.ErrAgentTimeout.Code())
 }

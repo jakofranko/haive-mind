@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	model := host.NewAppModel(hubChans)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())

@@ -9,7 +9,7 @@ import (
 )
 
 func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -22,7 +22,7 @@ func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
 }
 
 func TestSnapshot_FullTUI_ParticipantsFocused(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -36,7 +36,7 @@ func TestSnapshot_FullTUI_ParticipantsFocused(t *testing.T) {
 }
 
 func TestSnapshot_FullTUI_DirectiveFocused(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -51,7 +51,7 @@ func TestSnapshot_FullTUI_DirectiveFocused(t *testing.T) {
 }
 
 func TestSnapshot_FullTUI_ButtonsFocused(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -75,7 +75,7 @@ func TestSnapshot_FullTUI_ButtonsFocused(t *testing.T) {
 }
 
 func TestSnapshot_Transcript_WithMessages(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -124,7 +124,7 @@ func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 }
 
 func TestSnapshot_Participants_AllStatuses(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -144,7 +144,7 @@ func TestSnapshot_Participants_AllStatuses(t *testing.T) {
 }
 
 func TestSnapshot_SmallTerminal(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -157,7 +157,7 @@ func TestSnapshot_SmallTerminal(t *testing.T) {
 }
 
 func TestSnapshot_NamePrompt(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	model := NewAppModel(hubChans)
 
 	model.width = 120
