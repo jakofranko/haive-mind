@@ -38,149 +38,150 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	hubChans := hub.NewHubChannels()
-	slog.Debug("Hub channels created")
+	hubChans := hub.NewHub()
+	slog.Debug("Hub created")
+
 	server := sshserver.NewServer(hubChans, *port, *hostKey)
 
 	var transcript *Transcript
-	transcriptChan := make(chan *hub.Message, 100)
-	participantUpdateChan := make(chan hub.Participant, 100)
 	if *dataDir != "" {
 		transcript = &Transcript{
 			Messages:     make([]*hub.Message, 0),
 			Participants: make([]*hub.Participant, 0),
 			StartedAt:    time.Now(),
 		}
-		go collectTranscript(ctx, transcriptChan, participantUpdateChan, transcript, *debug)
 	}
 
 	// Track participant responses per round for aggregation
 	responsesByRound := make(map[int][]*hub.Message)
 	currentRound := 1
 
-	// Consume SendChan: track participant responses, forward to Outbound (for broadcast) and transcriptChan, send directives/aggregates to agent
-	go func() {
-		slog.Debug("SendChan consumer started")
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg := <-hubChans.SendChan():
-				slog.Debug("SendChan message received", "type", msg.Type, "from", msg.From, "round", msg.Round)
-				// Track participant responses before forwarding
-				if msg.Type == hub.MessageTypeResponse && msg.From != "agent" {
-					// Use server's current round for tracking
-					responsesByRound[currentRound] = append(responsesByRound[currentRound], msg)
-					slog.Debug("Tracked participant response", "round", currentRound, "from", msg.From)
-				}
-				// Forward to Outbound for broadcastLoop
-				hubChans.Outbound() <- msg
-				// Also send to transcriptChan for collection
-				if transcript != nil {
-					transcriptChan <- msg
-				}
-				slog.Debug("Forwarded to Outbound and transcriptChan", "type", msg.Type, "from", msg.From)
+	// Subscribe to messages for transcript collection
+	if transcript != nil {
+		messageTypes := []hub.MessageType{
+			hub.MessageTypeDirective,
+			hub.MessageTypeResponse,
+			hub.MessageTypeSystem,
+			hub.MessageTypeAggregate,
+			hub.MessageTypeNewRound,
+			hub.MessageTypeRoundChange,
+			hub.MessageTypeExport,
+			hub.MessageTypeExportComplete,
+		}
 
-				// Send directives and aggregates to agent
-				if msg.Type == hub.MessageTypeDirective || msg.Type == hub.MessageTypeAggregate {
-					slog.Debug("Sending to agent", "type", msg.Type, "from", msg.From, "round", currentRound)
-					response, err := hubChans.SendToAgent(ctx, msg.Content)
-					if err != nil {
-						slog.Error("Agent error", "error", err)
-						errMsg := hub.NewMessage(hub.MessageTypeSystem, "system", "Agent error: "+err.Error(), currentRound)
-						hubChans.Outbound() <- errMsg
-						if transcript != nil {
-							transcriptChan <- errMsg
-						}
-						continue
-					}
-					slog.Debug("Agent replied", "response", response)
-					agentReply := hub.NewMessage(hub.MessageTypeResponse, "agent", response, currentRound)
-					hubChans.Outbound() <- agentReply
-					if transcript != nil {
-						transcriptChan <- agentReply
-					}
+		for _, msgType := range messageTypes {
+			hubChans.Subscribe(ctx, msgType, func(msg *hub.Message) error {
+				transcript.Messages = append(transcript.Messages, msg)
+if *debug {
+					slog.Debug("hub event", "type", msg.Type, "from", msg.From, "content", msg.Content, "round", msg.Round)
+				}
+				return nil
+			})
+		}
+
+		// Subscribe to participant events
+		hubChans.Subscribe(ctx, hub.MessageTypeParticipantEvent, func(msg *hub.Message) error {
+			participants := hubChans.GetParticipants()
+			for _, p := range participants {
+				if p.Name == msg.ID {
+					transcript.Participants = append(transcript.Participants, p)
+					break
 				}
 			}
-		}
-	}()
+			return nil
+		})
+	}
 
-	// Forward participant updates to transcript
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case p := <-hubChans.ParticipantUpdateChan():
-				if transcript != nil {
-					participantUpdateChan <- p
-				}
+	// Subscribe to track participant responses for aggregation
+	hubChans.Subscribe(ctx, hub.MessageTypeResponse, func(msg *hub.Message) error {
+		if msg.From != "agent" {
+			responsesByRound[msg.Round] = append(responsesByRound[msg.Round], msg)
+			slog.Debug("Tracked participant response", "round", msg.Round, "from", msg.From)
+		}
+		return nil
+	})
+
+	// Route directives to agent
+	hubChans.Subscribe(ctx, hub.MessageTypeDirective, func(msg *hub.Message) error {
+		slog.Debug("Sending directive to agent", "from", msg.From, "round", msg.Round, "content", msg.Content)
+		response, err := hubChans.SendToAgent(ctx, msg.Content)
+		if err != nil {
+			slog.Error("Agent error on directive", "error", err)
+			errMsg := hub.NewMessage(hub.MessageTypeSystem, "system", "Agent error: "+err.Error(), currentRound)
+			hubChans.Send(ctx, errMsg)
+			return nil
+		}
+		slog.Debug("Agent replied to directive", "response", response)
+		agentReply := hub.NewMessage(hub.MessageTypeResponse, "agent", response, currentRound)
+		hubChans.Send(ctx, agentReply)
+		return nil
+	})
+
+	// Route aggregates to agent
+	hubChans.Subscribe(ctx, hub.MessageTypeAggregate, func(msg *hub.Message) error {
+		// Skip aggregate_request signals
+		if msg.Content == "aggregate_request" {
+			return nil
+		}
+		slog.Debug("Sending aggregate to agent", "round", msg.Round, "content", msg.Content)
+		response, err := hubChans.SendToAgent(ctx, msg.Content)
+		if err != nil {
+			slog.Error("Agent error on aggregate", "error", err)
+			errMsg := hub.NewMessage(hub.MessageTypeSystem, "system", "Agent error: "+err.Error(), currentRound)
+			hubChans.Send(ctx, errMsg)
+			return nil
+		}
+		slog.Debug("Agent replied to aggregate", "response", response)
+		agentReply := hub.NewMessage(hub.MessageTypeResponse, "agent", response, currentRound)
+		hubChans.Send(ctx, agentReply)
+		return nil
+	})
+
+	// Handle aggregate requests from host - build aggregate from tracked responses
+	hubChans.Subscribe(ctx, hub.MessageTypeAggregate, func(msg *hub.Message) error {
+		responses := responsesByRound[currentRound]
+		if len(responses) > 0 {
+			var parts []string
+			for _, r := range responses {
+				parts = append(parts, r.From+": "+r.Content)
+			}
+			aggregateContent := "Aggregated responses: " + joinStrings(parts, "; ")
+			aggregateMsg := hub.NewMessage(hub.MessageTypeAggregate, "Host", aggregateContent, currentRound)
+			hubChans.Send(ctx, aggregateMsg)
+		}
+		return nil
+	})
+
+	// Handle new round requests
+	hubChans.Subscribe(ctx, hub.MessageTypeNewRound, func(msg *hub.Message) error {
+		currentRound++
+		slog.Debug("New round started", "round", currentRound)
+		responsesByRound[currentRound] = make([]*hub.Message, 0)
+		roundMsg := hub.NewMessage(hub.MessageTypeRoundChange, "hub", "", currentRound)
+		hubChans.Send(ctx, roundMsg)
+		return nil
+	})
+
+	// Handle export requests
+	hubChans.Subscribe(ctx, hub.MessageTypeExport, func(msg *hub.Message) error {
+		if transcript != nil && *dataDir != "" {
+			fullPath := filepath.Join(*dataDir, msg.Content)
+			if err := saveTranscript(transcript, *dataDir, msg.Content); err != nil {
+				slog.Error("Failed to export transcript", "error", err)
+			} else {
+				completeMsg := hub.NewMessage(hub.MessageTypeExportComplete, "hub", fullPath, 0)
+				hubChans.Send(ctx, completeMsg)
 			}
 		}
-	}()
+		return nil
+	})
 
-	// Consume AggregateChan: build aggregate from tracked responses and send to SendChan
-	go func() {
-		slog.Debug("AggregateChan consumer started")
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-hubChans.AggregateChan():
-				responses := responsesByRound[currentRound]
-				if len(responses) == 0 {
-					slog.Debug("No responses to aggregate", "round", currentRound)
-					continue
-				}
-				var parts []string
-				for _, r := range responses {
-					parts = append(parts, r.From+": "+r.Content)
-				}
-				aggregateContent := "Aggregated responses: " + joinStrings(parts, "; ")
-				aggregateMsg := hub.NewMessage(hub.MessageTypeAggregate, "Host", aggregateContent, currentRound)
-				// Send to SendChan only (it will forward to Outbound for broadcast + agent)
-				hubChans.SendChan() <- aggregateMsg
-			}
-		}
-	}()
-
-	// Consume NewRoundChan: increment round and notify all
-	go func() {
-		slog.Debug("NewRoundChan consumer started")
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-hubChans.NewRoundChan():
-				currentRound++
-				slog.Debug("New round started", "round", currentRound)
-				// Clear old responses
-				responsesByRound[currentRound] = make([]*hub.Message, 0)
-				// Notify all TUIs of new round
-				hubChans.RoundChangedChan() <- currentRound
-			}
-		}
-	}()
-
-	// Consume ExportChan: save transcript and notify completion
-	go func() {
-		slog.Debug("ExportChan consumer started")
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case path := <-hubChans.ExportChan():
-				if transcript != nil && *dataDir != "" {
-					fullPath := filepath.Join(*dataDir, path)
-					if err := saveTranscript(transcript, *dataDir, path); err != nil {
-						slog.Error("Failed to export transcript", "error", err)
-					} else {
-						hubChans.ExportCompleteChan() <- fullPath
-					}
-				}
-			}
-		}
-	}()
+	// Start the hub
+	if err := hubChans.Start(); err != nil {
+		slog.Error("Failed to start hub", "error", err)
+		os.Exit(1)
+	}
+	defer hubChans.Stop()
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -236,27 +237,10 @@ func setupLogging(logFile string, debug bool) {
 	slog.Info("Logging configured", "logFile", logFile, "debug", debug)
 }
 
-func collectTranscript(ctx context.Context, msgCh <-chan *hub.Message, participantCh <-chan hub.Participant, t *Transcript, debug bool) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg := <-msgCh:
-			t.Messages = append(t.Messages, msg)
-			if debug {
-				slog.Debug("hub event", "type", msg.Type, "from", msg.From, "content", msg.Content, "round", msg.Round)
-			}
-		case p := <-participantCh:
-			pCopy := p
-			t.Participants = append(t.Participants, &pCopy)
-		}
-	}
-}
-
 func shutdown(server *ssh.Server, h hub.Hub, t *Transcript, dataDir string) {
 	slog.Info("Broadcasting session ended message")
 	endedMsg := hub.NewMessage(hub.MessageTypeSystem, "system", "Session ended", 0)
-	h.SendChan() <- endedMsg
+	h.Send(context.Background(), endedMsg)
 
 	slog.Info("Waiting for connections to close")
 	time.Sleep(2 * time.Second)

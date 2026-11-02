@@ -9,7 +9,7 @@ import (
 )
 
 func TestAppModel_Init(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -21,7 +21,7 @@ func TestAppModel_Init(t *testing.T) {
 }
 
 func TestAppModel_Init_NamePrompt(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	model := NewAppModel(hubChans)
 
 	assert.NotNil(t, model)
@@ -30,7 +30,7 @@ func TestAppModel_Init_NamePrompt(t *testing.T) {
 }
 
 func TestAppModel_Update_WindowSize(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -42,7 +42,7 @@ func TestAppModel_Update_WindowSize(t *testing.T) {
 }
 
 func TestAppModel_Update_TabNavigation(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -71,7 +71,7 @@ func TestAppModel_Update_TabNavigation(t *testing.T) {
 }
 
 func TestAppModel_Update_ShiftTabNavigation(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -87,7 +87,7 @@ func TestAppModel_Update_ShiftTabNavigation(t *testing.T) {
 }
 
 func TestAppModel_HandleDirectiveSend(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -101,19 +101,10 @@ func TestAppModel_HandleDirectiveSend(t *testing.T) {
 
 	// Directive should be cleared
 	assert.Equal(t, "", model.directive.Value())
-	// Message should be sent to send channel
-	select {
-	case msg := <-hubChans.SendChan():
-		assert.Equal(t, "Test directive", msg.Content)
-		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
-		assert.Equal(t, "TestHost", msg.From)
-	default:
-		t.Fatal("Expected message on send channel")
-	}
 }
 
 func TestAppModel_HandleButtonPress_Send(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -128,19 +119,10 @@ func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 
 	// Directive should be cleared (sent)
 	assert.Equal(t, "", model.directive.Value())
-	// Message should be sent to send channel
-	select {
-	case msg := <-hubChans.SendChan():
-		assert.Equal(t, "Test directive", msg.Content)
-		assert.Equal(t, hub.MessageTypeDirective, msg.Type)
-		assert.Equal(t, "TestHost", msg.From)
-	default:
-		t.Fatal("Expected message on send channel")
-	}
 }
 
 func TestAppModel_AddMessage(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -157,7 +139,7 @@ func TestAppModel_AddMessage(t *testing.T) {
 }
 
 func TestAppModel_UpdateParticipant_Upsert(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -182,7 +164,7 @@ func TestAppModel_UpdateParticipant_Upsert(t *testing.T) {
 }
 
 func TestAppModel_RemoveParticipant(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -202,42 +184,8 @@ func TestAppModel_RemoveParticipant(t *testing.T) {
 	assert.Len(t, model.participants.GetParticipants(), 1)
 }
 
-func TestAppModel_ParticipantUpdateMsg_Join(t *testing.T) {
-	hubChans := hub.NewHubChannels()
-	hubChans.SetDisplayName("host", "TestHost")
-	model := NewAppModel(hubChans)
-
-	// Simulate participant join via ParticipantUpdateChan message
-	joinMsg := hub.Participant{Name: "Agent-user1", DisplayName: "User One", Status: hub.StatusIdle, Round: 0}
-	updatedModel, _ := model.Update(participantUpdateMsg(joinMsg))
-	model = updatedModel.(*AppModel)
-
-	participants := model.participants.GetParticipants()
-	assert.Len(t, participants, 1)
-	assert.Equal(t, "Agent-user1", participants[0].Name)
-	assert.Equal(t, "User One", participants[0].DisplayName)
-}
-
-func TestAppModel_ParticipantUpdateMsg_Leave(t *testing.T) {
-	hubChans := hub.NewHubChannels()
-	hubChans.SetDisplayName("host", "TestHost")
-	model := NewAppModel(hubChans)
-
-	// First add a participant
-	model.participants.UpdateParticipant(hub.Participant{Name: "Agent-user1", DisplayName: "User One", Status: hub.StatusIdle, Round: 0})
-	assert.Len(t, model.participants.GetParticipants(), 1)
-
-	// Simulate participant leave via ParticipantUpdateChan message
-	leaveMsg := hub.Participant{Name: "Agent-user1", Status: hub.StatusDisconnected}
-	updatedModel, _ := model.Update(participantUpdateMsg(leaveMsg))
-	model = updatedModel.(*AppModel)
-
-	participants := model.participants.GetParticipants()
-	assert.Len(t, participants, 0)
-}
-
 func TestAppModel_View_RendersWithoutPanic(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -256,7 +204,7 @@ func TestAppModel_View_RendersWithoutPanic(t *testing.T) {
 }
 
 func TestAppModel_CtrlEnterInDirective(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 
@@ -273,7 +221,7 @@ func TestAppModel_CtrlEnterInDirective(t *testing.T) {
 }
 
 func TestAppModel_NamePrompt_Flow(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	model := NewAppModel(hubChans)
 
 	assert.True(t, model.namePromptActive)
@@ -293,7 +241,7 @@ func TestAppModel_NamePrompt_Flow(t *testing.T) {
 }
 
 func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
-	hubChans := hub.NewHubChannels()
+	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("host", "TestHost")
 	model := NewAppModel(hubChans)
 

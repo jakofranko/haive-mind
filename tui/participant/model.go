@@ -1,6 +1,7 @@
 package participant
 
 import (
+	"context"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -35,6 +36,17 @@ type ParticipantModel struct {
 	namePrompt textinput.Model
 
 	namePromptActive bool
+
+	subscriptions []hub.Subscription
+
+	// Internal channels for hub message forwarding
+	msgCh             chan *hub.Message
+	participantCh     chan *hub.Participant
+	roundCh           chan int
+	errorCh           chan error
+
+	// Synchronization
+	subscriptionsReady chan struct{}
 }
 
 func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *ParticipantModel {
@@ -46,16 +58,22 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 	namePrompt.Width = 40
 
 	m := &ParticipantModel{
-		hub:              hubChans,
-		activePane:       paneTranscript,
-		round:            1,
-		yourName:         yourName,
-		sshUsername:      sshUsername,
-		transcript:       transcript.New(),
-		sidebar:          sidebar.New(),
-		response:         response.New(),
-		namePrompt:       namePrompt,
-		namePromptActive: false,
+		hub:                 hubChans,
+		activePane:          paneTranscript,
+		round:               1,
+		yourName:            yourName,
+		sshUsername:         sshUsername,
+		transcript:          transcript.New(),
+		sidebar:             sidebar.New(),
+		response:            response.New(),
+		namePrompt:          namePrompt,
+		namePromptActive:    false,
+		subscriptions:       make([]hub.Subscription, 0),
+		msgCh:               make(chan *hub.Message, 100),
+		participantCh:       make(chan *hub.Participant, 100),
+		roundCh:             make(chan int, 10),
+		errorCh:             make(chan error, 10),
+		subscriptionsReady:  make(chan struct{}),
 	}
 
 	m.sidebar.SetYourName(yourName)
@@ -81,50 +99,178 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 
 func (m *ParticipantModel) Init() tea.Cmd {
 	if m.namePromptActive {
-		return textinput.Blink
+		return tea.Batch(
+			textinput.Blink,
+			m.setupSubscriptions(),
+			m.listenForMessages(),
+			m.listenForParticipants(),
+			m.listenForRounds(),
+			m.listenForErrors(),
+			m.fetchInitialParticipants(),
+		)
 	}
 	return tea.Batch(
 		m.transcript.Init(),
 		m.sidebar.Init(),
 		m.response.Init(),
+		m.setupSubscriptions(),
 		m.listenForMessages(),
-		m.listenForParticipantUpdates(),
-		m.listenForRoundChanges(),
+		m.listenForParticipants(),
+		m.listenForRounds(),
 		m.listenForErrors(),
+		m.fetchInitialParticipants(),
 	)
 }
 
-type hubMessageMsg hub.Message
-type participantUpdateMsg hub.Participant
-type roundChangedMsg int
-type errorMsg error
+func (m *ParticipantModel) fetchInitialParticipants() tea.Cmd {
+	return func() tea.Msg {
+		participants := m.hub.GetParticipants()
+		return initialParticipantsMsg(participants)
+	}
+}
+
+type initialParticipantsMsg []*hub.Participant
 
 func (m *ParticipantModel) listenForMessages() tea.Cmd {
 	return func() tea.Msg {
-		msg := <-m.hub.Inbound()
+		msg := <-m.msgCh
 		return hubMessageMsg(*msg)
 	}
 }
 
-func (m *ParticipantModel) listenForParticipantUpdates() tea.Cmd {
+func (m *ParticipantModel) listenForParticipants() tea.Cmd {
 	return func() tea.Msg {
-		p := <-m.hub.ParticipantUpdateChan()
+		p := <-m.participantCh
 		return participantUpdateMsg(p)
 	}
 }
 
-func (m *ParticipantModel) listenForRoundChanges() tea.Cmd {
+func (m *ParticipantModel) listenForRounds() tea.Cmd {
 	return func() tea.Msg {
-		round := <-m.hub.RoundChangedChan()
+		round := <-m.roundCh
 		return roundChangedMsg(round)
 	}
 }
 
 func (m *ParticipantModel) listenForErrors() tea.Cmd {
 	return func() tea.Msg {
-		err := <-m.hub.ErrorChan()
+		err := <-m.errorCh
 		return errorMsg(err)
 	}
+}
+
+type hubMessageMsg hub.Message
+type participantUpdateMsg *hub.Participant
+type roundChangedMsg int
+type errorMsg error
+
+func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
+	ctx := context.Background()
+
+	// Subscribe to messages (directive, response, system, aggregate, etc.)
+	sub, err := m.hub.Subscribe(ctx, hub.MessageTypeDirective, func(msg *hub.Message) error {
+		select {
+		case m.msgCh <- msg:
+		default:
+		}
+		return nil
+	})
+	if err == nil {
+		m.subscriptions = append(m.subscriptions, sub)
+	}
+
+	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeResponse, func(msg *hub.Message) error {
+		// Skip aggregate_request signals
+		if msg.Content != "aggregate_request" {
+			select {
+			case m.msgCh <- msg:
+			default:
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		m.subscriptions = append(m.subscriptions, sub)
+	}
+
+	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeSystem, func(msg *hub.Message) error {
+		select {
+		case m.msgCh <- msg:
+		default:
+		}
+		return nil
+	})
+	if err == nil {
+		m.subscriptions = append(m.subscriptions, sub)
+	}
+
+	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeAggregate, func(msg *hub.Message) error {
+		// Skip aggregate_request signals
+		if msg.Content != "aggregate_request" {
+			select {
+			case m.msgCh <- msg:
+			default:
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		m.subscriptions = append(m.subscriptions, sub)
+	}
+
+	// Subscribe to participant events
+	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeParticipantEvent, func(msg *hub.Message) error {
+		p := m.parseParticipantEvent(msg)
+		if p != nil {
+			select {
+			case m.participantCh <- p:
+			default:
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		m.subscriptions = append(m.subscriptions, sub)
+	}
+
+	// Subscribe to round changes
+	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeRoundChange, func(msg *hub.Message) error {
+		select {
+		case m.roundCh <- msg.Round:
+		default:
+		}
+		return nil
+	})
+	if err == nil {
+		m.subscriptions = append(m.subscriptions, sub)
+	}
+
+	close(m.subscriptionsReady)
+	return func() tea.Msg { return subscriptionsReadyMsg{} }
+}
+
+type subscriptionsReadyMsg struct{}
+
+func (m *ParticipantModel) handleMessage(msg *hub.Message) error {
+	return nil // Kept for compatibility
+}
+
+func (m *ParticipantModel) parseParticipantEvent(msg *hub.Message) *hub.Participant {
+	participants := m.hub.GetParticipants()
+	for _, p := range participants {
+		if p.Name == msg.ID {
+			return p
+		}
+	}
+	return nil
+}
+
+func (m *ParticipantModel) handleParticipantUpdate(p *hub.Participant) error {
+	return nil
+}
+
+func (m *ParticipantModel) handleRoundChange(round int) error {
+	return nil
 }
 
 func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -146,21 +292,24 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.listenForMessages())
 		return m, tea.Batch(cmds...)
 
-	case hub.Message:
-		m.transcript.AddMessage(msg)
-		cmds = append(cmds, m.listenForMessages())
-		return m, tea.Batch(cmds...)
-
 	case participantUpdateMsg:
-		m.sidebar.UpdateParticipant(hub.Participant(msg))
-		cmds = append(cmds, m.listenForParticipantUpdates())
+		m.sidebar.UpdateParticipant(*msg)
+		cmds = append(cmds, m.listenForParticipants())
 		return m, tea.Batch(cmds...)
 
 	case roundChangedMsg:
 		m.round = int(msg)
 		m.sidebar.SetRound(m.round)
-		cmds = append(cmds, m.listenForRoundChanges())
+		cmds = append(cmds, m.listenForRounds())
 		return m, tea.Batch(cmds...)
+
+	case initialParticipantsMsg:
+		participants := make([]hub.Participant, len(msg))
+		for i, p := range msg {
+			participants[i] = *p
+		}
+		m.sidebar.SetParticipants(participants)
+		return m, nil
 
 	case errorMsg:
 		m.transcript.AddSystemMessage("Error: " + msg.Error())
@@ -251,20 +400,12 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					{Name: name, DisplayName: name, Status: hub.StatusIdle, Round: 0},
 				})
 				// Send participant update to hub so host panel shows this participant
-				m.hub.ParticipantUpdateChan() <- hub.Participant{
-					Name:        name,
-					DisplayName: name,
-					Status:      hub.StatusIdle,
-					Round:       m.round,
-				}
+				p := hub.NewParticipantEvent(name, name, hub.StatusIdle, m.round, hub.ParticipantEventConnect)
+				m.hub.RegisterParticipant(p)
 				return m, tea.Batch(
 					m.transcript.Init(),
 					m.sidebar.Init(),
 					m.response.Init(),
-					m.listenForMessages(),
-					m.listenForParticipantUpdates(),
-					m.listenForRoundChanges(),
-					m.listenForErrors(),
 					m.response.Focus(),
 				)
 			}
@@ -297,7 +438,7 @@ func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
 	}
 
 	msg := hub.NewMessage(hub.MessageTypeResponse, m.yourName, content, m.round)
-	m.hub.SendChan() <- msg
+	m.hub.Send(context.Background(), msg)
 
 	m.response.Reset()
 	return m, m.response.Focus()
@@ -354,4 +495,9 @@ func (m *ParticipantModel) namePromptView() string {
 func (m *ParticipantModel) SetYourName(name string) {
 	m.yourName = name
 	m.sidebar.SetYourName(name)
+}
+
+// SubscriptionsReady returns a channel that closes when subscriptions are registered
+func (m *ParticipantModel) SubscriptionsReady() <-chan struct{} {
+	return m.subscriptionsReady
 }

@@ -23,6 +23,22 @@ func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 		participantSessions: make(map[string]*trackedSession),
 	}
 
+	// Start the hub
+	if err := h.Start(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Subscribe to participant events
+	ctx := context.Background()
+	_, err := h.Subscribe(ctx, hub.MessageTypeParticipantEvent, func(msg *hub.Message) error {
+		// Participant events are handled via RegisterParticipant/UnregisterParticipant
+		// This subscription is for other components that need to react to participant changes
+		return nil
+	})
+	if err != nil {
+		log.Printf("Failed to subscribe to participant events: %v", err)
+	}
+
 	go mgr.broadcastLoop()
 
 	opts := []ssh.Option{
@@ -101,28 +117,19 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 
 	go m.trackSession(ctx, session)
 
-	if isHost {
-		displayName := m.hub.GetDisplayName("host")
-		if displayName == "" {
+	// Register participant with hub
+	displayName := m.hub.GetDisplayName(sshUsername)
+	if displayName == "" {
+		if isHost {
 			displayName = "Host"
-		}
-		m.hub.ParticipantUpdateChan() <- hub.Participant{
-			Name:        name,
-			DisplayName: displayName,
-			Status:      hub.StatusIdle,
-			Round:       0,
-		}
-	} else {
-		displayName := m.hub.GetDisplayName(sshUsername)
-		if displayName == "" {
+		} else {
 			displayName = name
 		}
-		m.hub.ParticipantUpdateChan() <- hub.Participant{
-			Name:        name,
-			DisplayName: displayName,
-			Status:      hub.StatusIdle,
-			Round:       0,
-		}
+	}
+
+	p := hub.NewParticipantEvent(name, displayName, hub.StatusIdle, 0, hub.ParticipantEventConnect)
+	if err := m.hub.RegisterParticipant(p); err != nil {
+		log.Printf("Failed to register participant: %v", err)
 	}
 
 	return program
@@ -140,9 +147,9 @@ func (m *sessionManager) trackSession(ctx context.Context, session *trackedSessi
 	}
 	m.mu.Unlock()
 
-	m.hub.ParticipantUpdateChan() <- hub.Participant{
-		Name:   session.name,
-		Status: hub.StatusDisconnected,
+	// Unregister participant from hub
+	if err := m.hub.UnregisterParticipant(session.name); err != nil {
+		log.Printf("Failed to unregister participant: %v", err)
 	}
 }
 
