@@ -102,6 +102,15 @@ m := &AppModel{
 	return m
 }
 
+// Close releases every hub subscription this model made. Call it when the
+// session ends so the hub stops delivering to a model nobody is reading.
+func (m *AppModel) Close() {
+	for _, sub := range m.subscriptions {
+		sub.Unsubscribe()
+	}
+	m.subscriptions = nil
+}
+
 func (m *AppModel) Init() tea.Cmd {
 	if m.namePromptActive {
 		return tea.Batch(

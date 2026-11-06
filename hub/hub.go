@@ -16,28 +16,26 @@ var ErrHubStopped = errors.New("hub stopped")
 type handlerEntry struct {
 	msgType MessageType
 	handler func(*Message) error
-	cancel  context.CancelFunc
 }
 
 type subscription struct {
-	entries []*handlerEntry
-	mu      sync.Mutex
+	hub   *hubImpl
+	entry *handlerEntry
+	once  sync.Once
+	done  chan struct{}
 }
 
+// Unsubscribe removes the handler. It is safe to call more than once.
 func (s *subscription) Unsubscribe() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, e := range s.entries {
-		if e.cancel != nil {
-			e.cancel()
-		}
-	}
-	s.entries = nil
+	s.once.Do(func() {
+		close(s.done)
+		s.hub.removeHandler(s.entry)
+	})
 }
 
 type hubImpl struct {
 	mu              sync.RWMutex
-	handlers        map[MessageType][]func(*Message) error
+	handlers        map[MessageType][]*handlerEntry
 	participants    map[string]*Participant
 	displayNames    map[string]string
 	agentRunner     agent.Runner
@@ -56,7 +54,7 @@ type hubImpl struct {
 func NewHub() *hubImpl {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &hubImpl{
-		handlers:     make(map[MessageType][]func(*Message) error),
+		handlers:     make(map[MessageType][]*handlerEntry),
 		participants: make(map[string]*Participant),
 		displayNames: make(map[string]string),
 		agentRunner:  agent.NewDefaultRunner(),
@@ -83,24 +81,38 @@ func (h *hubImpl) Send(ctx context.Context, msg *Message) error {
 }
 
 func (h *hubImpl) Subscribe(ctx context.Context, msgType MessageType, handler func(*Message) error) (Subscription, error) {
+	entry := &handlerEntry{msgType: msgType, handler: handler}
+
+	h.mu.Lock()
+	h.handlers[msgType] = append(h.handlers[msgType], entry)
+	h.mu.Unlock()
+
+	sub := &subscription{hub: h, entry: entry, done: make(chan struct{})}
+	if ctx.Done() != nil {
+		go func() {
+			select {
+			case <-ctx.Done():
+				sub.Unsubscribe()
+			case <-sub.done:
+			}
+		}()
+	}
+	return sub, nil
+}
+
+// removeHandler deletes entry, copying the slice so in-flight dispatches that
+// already took a snapshot are unaffected.
+func (h *hubImpl) removeHandler(entry *handlerEntry) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
-	if h.handlers[msgType] == nil {
-		h.handlers[msgType] = make([]func(*Message) error, 0)
+	old := h.handlers[entry.msgType]
+	kept := make([]*handlerEntry, 0, len(old))
+	for _, e := range old {
+		if e != entry {
+			kept = append(kept, e)
+		}
 	}
-
-	_, cancel := context.WithCancel(ctx)
-	entry := &handlerEntry{
-		msgType: msgType,
-		handler: handler,
-		cancel:  cancel,
-	}
-
-	h.handlers[msgType] = append(h.handlers[msgType], handler)
-
-	sub := &subscription{entries: []*handlerEntry{entry}}
-	return sub, nil
+	h.handlers[entry.msgType] = kept
 }
 
 func (h *hubImpl) RequestAggregate(round int) error {
@@ -224,12 +236,12 @@ func (h *hubImpl) dispatch(msg *Message) {
 	handlers := h.handlers[msg.Type]
 	h.mu.RUnlock()
 
-	for _, handler := range handlers {
+	for _, e := range handlers {
 		go func(h func(*Message) error) {
 			if err := h(msg); err != nil {
 				// Log error but continue
 			}
-		}(handler)
+		}(e.handler)
 	}
 
 	// Handle internal agent invocation for Directive and Aggregate
@@ -284,11 +296,11 @@ func (h *hubImpl) broadcastLocked(msgType MessageType, payload interface{}) {
 	}
 
 	handlers := h.handlers[msgType]
-	for _, handler := range handlers {
+	for _, e := range handlers {
 		go func(h func(*Message) error) {
 			if err := h(msg); err != nil {
 			}
-		}(handler)
+		}(e.handler)
 	}
 }
 

@@ -492,6 +492,15 @@ func (m *ParticipantModel) namePromptView() string {
 	return lipgloss.JoinVertical(lipgloss.Center, title, prompt)
 }
 
+// Close releases every hub subscription this model made. Call it when the
+// session ends so the hub stops delivering to a model nobody is reading.
+func (m *ParticipantModel) Close() {
+	for _, sub := range m.subscriptions {
+		sub.Unsubscribe()
+	}
+	m.subscriptions = nil
+}
+
 func (m *ParticipantModel) SetYourName(name string) {
 	m.yourName = name
 	m.sidebar.SetYourName(name)

@@ -62,6 +62,7 @@ func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 
 type trackedSession struct {
 	program  *tea.Program
+	model    interface{ Close() }
 	cancel   context.CancelFunc
 	username string
 	isHost   bool
@@ -81,7 +82,10 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	isHost := !m.hostConnected
 	m.mu.Unlock()
 
-	var model tea.Model
+	var model interface {
+		tea.Model
+		Close()
+	}
 	var name string
 	var sshUsername string
 
@@ -100,6 +104,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 
 	session := &trackedSession{
 		program:  program,
+		model:    model,
 		cancel:   cancel,
 		username: sshUsername,
 		isHost:   isHost,
@@ -137,6 +142,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 
 func (m *sessionManager) trackSession(ctx context.Context, session *trackedSession) {
 	session.program.Wait()
+	session.model.Close()
 
 	m.mu.Lock()
 	if session.isHost {
