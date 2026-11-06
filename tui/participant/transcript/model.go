@@ -13,6 +13,7 @@ import (
 
 type Model struct {
 	viewport viewport.Model
+	content  string // full history; viewport.View() only returns the visible lines
 	renderer *glamour.TermRenderer
 	width    int
 	height   int
@@ -51,10 +52,12 @@ func New() Model {
 	}
 
 	vp := viewport.New(0, 0)
-	vp.SetContent("Welcome to Haive Mind Participant TUI\nWaiting for messages...")
+	const welcome = "Welcome to Haive Mind Participant TUI\nWaiting for messages..."
+	vp.SetContent(welcome)
 
 	return Model{
 		viewport: vp,
+		content:  welcome,
 		renderer: renderer,
 		styles:   defaultStyles(),
 	}
@@ -104,8 +107,13 @@ func (m *Model) addMessage(msg hub.Message) {
 	content := fmt.Sprintf("[%s] **%s** (Round %d):\n%s\n---\n",
 		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
 
-	current := m.viewport.View()
-	m.viewport.SetContent(current + content)
+	m.appendContent(content)
+}
+
+// appendContent adds text to the full history and shows the newest end.
+func (m *Model) appendContent(text string) {
+	m.content += text
+	m.viewport.SetContent(m.content)
 	m.viewport.GotoBottom()
 }
 
@@ -135,17 +143,13 @@ func (m *Model) AddMessage(msg hub.Message) {
 	content := fmt.Sprintf("[%s] **%s** (Round %d):\n%s\n---\n",
 		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
 
-	current := m.viewport.View()
-	m.viewport.SetContent(current + content)
-	m.viewport.GotoBottom()
+	m.appendContent(content)
 }
 
 func (m *Model) AddSystemMessage(content string) {
 	msg := fmt.Sprintf("[%s] *%s*\n---\n",
 		time.Now().Format("15:04:05"), content)
-	current := m.viewport.View()
-	m.viewport.SetContent(current + msg)
-	m.viewport.GotoBottom()
+	m.appendContent(msg)
 }
 
 func (m *Model) GetContent() string {
@@ -153,5 +157,6 @@ func (m *Model) GetContent() string {
 }
 
 func (m *Model) SetContent(content string) {
+	m.content = content
 	m.viewport.SetContent(content)
 }

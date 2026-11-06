@@ -2,13 +2,13 @@
 │ Transcript                                                                 ││ Participants (Round 0) │              
 │                                                                            ││Agent-1  idle           │              
 │---                                                                         │╰────────────────────────╯              
-│                                                                            │╭───────────────────────────────────────
+│[10:30:45] **Agent-2** (Round 1):                                           │╭───────────────────────────────────────
 │                                                                            │──────╮                                 
 │  Response with code                                                        ││ Response (Enter=Submit,               
 │                                                                            │Ctrl+Enter=Newline) │                   
 │                                                                            ││┃ Type your response here... (Ent...   
 │---                                                                         ││                                       
-│                                                                            ││┃                                      
+│[10:30:45] **system** (Round 1):                                            ││┃                                      
 │                                                                            ││                                       
 │  System message                                                            ││┃                                      
 │                                                                            ││                                       
