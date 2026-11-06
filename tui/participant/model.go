@@ -168,39 +168,18 @@ type errorMsg error
 func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 	ctx := context.Background()
 
-	// Subscribe to messages (directive, response, system, aggregate, etc.)
-	sub, err := m.hub.Subscribe(ctx, hub.MessageTypeDirective, func(msg *hub.Message) error {
-		m.msgCh.Push(msg)
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
-	}
-
-	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeResponse, func(msg *hub.Message) error {
-		// Skip aggregate_request signals
-		if msg.Content != "aggregate_request" {
-			m.msgCh.Push(msg)
+	// Transcript traffic arrives through one subscription so that messages of
+	// different types keep the order they were sent in.
+	sub, err := m.hub.SubscribeTypes(ctx, []hub.MessageType{
+		hub.MessageTypeDirective,
+		hub.MessageTypeResponse,
+		hub.MessageTypeSystem,
+		hub.MessageTypeAggregate,
+	}, func(msg *hub.Message) error {
+		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
+			return nil // a signal to the coordinator, not transcript content
 		}
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
-	}
-
-	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeSystem, func(msg *hub.Message) error {
 		m.msgCh.Push(msg)
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
-	}
-
-	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeAggregate, func(msg *hub.Message) error {
-		// Skip aggregate_request signals
-		if msg.Content != "aggregate_request" {
-			m.msgCh.Push(msg)
-		}
 		return nil
 	})
 	if err == nil {

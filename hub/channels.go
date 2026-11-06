@@ -12,6 +12,8 @@ type Subscription interface {
 type Hub interface {
 	Send(ctx context.Context, msg *Message) error
 	Subscribe(ctx context.Context, msgType MessageType, handler func(*Message) error) (Subscription, error)
+	// SubscribeTypes delivers several message types to one handler in send order.
+	SubscribeTypes(ctx context.Context, msgTypes []MessageType, handler func(*Message) error) (Subscription, error)
 	RequestAggregate(round int) error
 	StartRound(round int) error
 	Export(path string) error

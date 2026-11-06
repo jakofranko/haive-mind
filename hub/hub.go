@@ -13,9 +13,55 @@ import (
 // ErrHubStopped is returned by Send once the hub has been stopped.
 var ErrHubStopped = errors.New("hub stopped")
 
+// handlerEntry is one subscriber. Messages for it queue in order and are
+// delivered by a single drain goroutine that exists only while there is work,
+// so a handler sees messages in send order and a slow handler cannot hold up
+// the hub or other subscribers.
 type handlerEntry struct {
-	msgType MessageType
-	handler func(*Message) error
+	msgTypes []MessageType
+	handler  func(*Message) error
+
+	mu      sync.Mutex
+	queue   []*Message
+	running bool
+	removed bool
+}
+
+func (e *handlerEntry) deliver(msg *Message) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.removed {
+		return
+	}
+	e.queue = append(e.queue, msg)
+	if !e.running {
+		e.running = true
+		go e.drain()
+	}
+}
+
+func (e *handlerEntry) drain() {
+	for {
+		e.mu.Lock()
+		if e.removed || len(e.queue) == 0 {
+			e.queue = nil
+			e.running = false
+			e.mu.Unlock()
+			return
+		}
+		msg := e.queue[0]
+		e.queue = e.queue[1:]
+		e.mu.Unlock()
+
+		_ = e.handler(msg) // handler errors are not actionable here
+	}
+}
+
+func (e *handlerEntry) remove() {
+	e.mu.Lock()
+	e.removed = true
+	e.queue = nil
+	e.mu.Unlock()
 }
 
 type subscription struct {
@@ -81,10 +127,19 @@ func (h *hubImpl) Send(ctx context.Context, msg *Message) error {
 }
 
 func (h *hubImpl) Subscribe(ctx context.Context, msgType MessageType, handler func(*Message) error) (Subscription, error) {
-	entry := &handlerEntry{msgType: msgType, handler: handler}
+	return h.SubscribeTypes(ctx, []MessageType{msgType}, handler)
+}
+
+// SubscribeTypes subscribes one handler to several message types. Messages of
+// all those types reach the handler in the order they were sent, which
+// separate per-type subscriptions cannot guarantee.
+func (h *hubImpl) SubscribeTypes(ctx context.Context, msgTypes []MessageType, handler func(*Message) error) (Subscription, error) {
+	entry := &handlerEntry{msgTypes: append([]MessageType(nil), msgTypes...), handler: handler}
 
 	h.mu.Lock()
-	h.handlers[msgType] = append(h.handlers[msgType], entry)
+	for _, t := range entry.msgTypes {
+		h.handlers[t] = append(h.handlers[t], entry)
+	}
 	h.mu.Unlock()
 
 	sub := &subscription{hub: h, entry: entry, done: make(chan struct{})}
@@ -103,16 +158,19 @@ func (h *hubImpl) Subscribe(ctx context.Context, msgType MessageType, handler fu
 // removeHandler deletes entry, copying the slice so in-flight dispatches that
 // already took a snapshot are unaffected.
 func (h *hubImpl) removeHandler(entry *handlerEntry) {
+	entry.remove()
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	old := h.handlers[entry.msgType]
-	kept := make([]*handlerEntry, 0, len(old))
-	for _, e := range old {
-		if e != entry {
-			kept = append(kept, e)
+	for _, t := range entry.msgTypes {
+		old := h.handlers[t]
+		kept := make([]*handlerEntry, 0, len(old))
+		for _, e := range old {
+			if e != entry {
+				kept = append(kept, e)
+			}
 		}
+		h.handlers[t] = kept
 	}
-	h.handlers[entry.msgType] = kept
 }
 
 func (h *hubImpl) RequestAggregate(round int) error {
@@ -237,11 +295,7 @@ func (h *hubImpl) dispatch(msg *Message) {
 	h.mu.RUnlock()
 
 	for _, e := range handlers {
-		go func(h func(*Message) error) {
-			if err := h(msg); err != nil {
-				// Log error but continue
-			}
-		}(e.handler)
+		e.deliver(msg)
 	}
 
 	// Handle internal agent invocation for Directive and Aggregate
@@ -297,10 +351,7 @@ func (h *hubImpl) broadcastLocked(msgType MessageType, payload interface{}) {
 
 	handlers := h.handlers[msgType]
 	for _, e := range handlers {
-		go func(h func(*Message) error) {
-			if err := h(msg); err != nil {
-			}
-		}(e.handler)
+		e.deliver(msg)
 	}
 }
 

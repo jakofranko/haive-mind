@@ -47,10 +47,10 @@ var transcriptTypes = []hub.MessageType{
 
 // Start subscribes the coordinator to the hub.
 func (c *Coordinator) Start(ctx context.Context) error {
-	for _, t := range transcriptTypes {
-		if _, err := c.hub.Subscribe(ctx, t, c.record); err != nil {
-			return err
-		}
+	// One subscription for every recorded type, so the transcript keeps the
+	// order messages were sent in.
+	if _, err := c.hub.SubscribeTypes(ctx, transcriptTypes, c.record); err != nil {
+		return err
 	}
 	if _, err := c.hub.Subscribe(ctx, hub.MessageTypeResponse, c.trackResponse); err != nil {
 		return err

@@ -2,6 +2,7 @@ package coordinator_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -159,4 +160,36 @@ func TestConcurrentTraffic_NoRaces(t *testing.T) {
 	eventually(t, "responses recorded", func() bool {
 		return countType(c.Transcript(), hub.MessageTypeResponse, "p") == 20
 	})
+}
+
+// G23: the recorded transcript keeps send order across message types.
+func TestTranscript_KeepsSendOrderAcrossTypes(t *testing.T) {
+	h, c, _ := newRig(t)
+	ctx := context.Background()
+
+	types := []hub.MessageType{hub.MessageTypeSystem, hub.MessageTypeDirective, hub.MessageTypeAggregate, hub.MessageTypeExportComplete}
+	const n = 100
+	for i := 0; i < n; i++ {
+		typ := types[i%len(types)]
+		content := fmt.Sprintf("%03d", i)
+		h.Send(ctx, hub.NewMessage(typ, "x", content, 1))
+	}
+	eventually(t, "all messages recorded", func() bool {
+		count := 0
+		for _, m := range c.Transcript() {
+			if len(m.Content) == 3 && m.Content[0] >= '0' && m.Content[0] <= '9' {
+				count++
+			}
+		}
+		return count >= n
+	})
+
+	i := 0
+	for _, m := range c.Transcript() {
+		if want := fmt.Sprintf("%03d", i); m.Content == want {
+			i++
+		} else if len(m.Content) == 3 && m.Content[0] >= '0' && m.Content[0] <= '9' {
+			t.Fatalf("recorded %s where %s was expected (out of order)", m.Content, want)
+		}
+	}
 }
