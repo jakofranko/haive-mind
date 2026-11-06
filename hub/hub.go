@@ -2,12 +2,16 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"jakofranko/haive-mind/agent"
 )
+
+// ErrHubStopped is returned by Send once the hub has been stopped.
+var ErrHubStopped = errors.New("hub stopped")
 
 type handlerEntry struct {
 	msgType MessageType
@@ -42,6 +46,11 @@ type hubImpl struct {
 	wg              sync.WaitGroup
 	started         bool
 	outbound        chan *Message
+
+	// closeMu guards closed and the close of outbound: Send holds the read
+	// lock so Stop cannot close the channel underneath an in-progress send.
+	closeMu sync.RWMutex
+	closed  bool
 }
 
 func NewHub() *hubImpl {
@@ -58,6 +67,11 @@ func NewHub() *hubImpl {
 }
 
 func (h *hubImpl) Send(ctx context.Context, msg *Message) error {
+	h.closeMu.RLock()
+	defer h.closeMu.RUnlock()
+	if h.closed {
+		return ErrHubStopped
+	}
 	select {
 	case h.outbound <- msg:
 		return nil
@@ -179,7 +193,12 @@ func (h *hubImpl) Start() error {
 func (h *hubImpl) Stop() error {
 	h.cancel()
 	h.wg.Wait()
-	close(h.outbound)
+	h.closeMu.Lock()
+	defer h.closeMu.Unlock()
+	if !h.closed {
+		h.closed = true
+		close(h.outbound)
+	}
 	return nil
 }
 
