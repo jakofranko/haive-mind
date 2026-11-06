@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/inbox"
 	"jakofranko/haive-mind/tui/participant/response"
 	"jakofranko/haive-mind/tui/participant/sidebar"
 	"jakofranko/haive-mind/tui/participant/transcript"
@@ -40,10 +41,10 @@ type ParticipantModel struct {
 	subscriptions []hub.Subscription
 
 	// Internal channels for hub message forwarding
-	msgCh             chan *hub.Message
-	participantCh     chan *hub.Participant
-	roundCh           chan int
-	errorCh           chan error
+	msgCh         *inbox.Queue[*hub.Message]
+	participantCh *inbox.Queue[*hub.Participant]
+	roundCh       *inbox.Queue[int]
+	errorCh       *inbox.Queue[error]
 
 	// Synchronization
 	subscriptionsReady chan struct{}
@@ -58,22 +59,22 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 	namePrompt.Width = 40
 
 	m := &ParticipantModel{
-		hub:                 hubChans,
-		activePane:          paneTranscript,
-		round:               1,
-		yourName:            yourName,
-		sshUsername:         sshUsername,
-		transcript:          transcript.New(),
-		sidebar:             sidebar.New(),
-		response:            response.New(),
-		namePrompt:          namePrompt,
-		namePromptActive:    false,
-		subscriptions:       make([]hub.Subscription, 0),
-		msgCh:               make(chan *hub.Message, 100),
-		participantCh:       make(chan *hub.Participant, 100),
-		roundCh:             make(chan int, 10),
-		errorCh:             make(chan error, 10),
-		subscriptionsReady:  make(chan struct{}),
+		hub:                hubChans,
+		activePane:         paneTranscript,
+		round:              1,
+		yourName:           yourName,
+		sshUsername:        sshUsername,
+		transcript:         transcript.New(),
+		sidebar:            sidebar.New(),
+		response:           response.New(),
+		namePrompt:         namePrompt,
+		namePromptActive:   false,
+		subscriptions:      make([]hub.Subscription, 0),
+		msgCh:              inbox.New[*hub.Message](),
+		participantCh:      inbox.New[*hub.Participant](),
+		roundCh:            inbox.New[int](),
+		errorCh:            inbox.New[error](),
+		subscriptionsReady: make(chan struct{}),
 	}
 
 	m.sidebar.SetYourName(yourName)
@@ -133,28 +134,28 @@ type initialParticipantsMsg []*hub.Participant
 
 func (m *ParticipantModel) listenForMessages() tea.Cmd {
 	return func() tea.Msg {
-		msg := <-m.msgCh
+		msg := m.msgCh.Pop()
 		return hubMessageMsg(*msg)
 	}
 }
 
 func (m *ParticipantModel) listenForParticipants() tea.Cmd {
 	return func() tea.Msg {
-		p := <-m.participantCh
+		p := m.participantCh.Pop()
 		return participantUpdateMsg(p)
 	}
 }
 
 func (m *ParticipantModel) listenForRounds() tea.Cmd {
 	return func() tea.Msg {
-		round := <-m.roundCh
+		round := m.roundCh.Pop()
 		return roundChangedMsg(round)
 	}
 }
 
 func (m *ParticipantModel) listenForErrors() tea.Cmd {
 	return func() tea.Msg {
-		err := <-m.errorCh
+		err := m.errorCh.Pop()
 		return errorMsg(err)
 	}
 }
@@ -169,10 +170,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 
 	// Subscribe to messages (directive, response, system, aggregate, etc.)
 	sub, err := m.hub.Subscribe(ctx, hub.MessageTypeDirective, func(msg *hub.Message) error {
-		select {
-		case m.msgCh <- msg:
-		default:
-		}
+		m.msgCh.Push(msg)
 		return nil
 	})
 	if err == nil {
@@ -182,10 +180,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeResponse, func(msg *hub.Message) error {
 		// Skip aggregate_request signals
 		if msg.Content != "aggregate_request" {
-			select {
-			case m.msgCh <- msg:
-			default:
-			}
+			m.msgCh.Push(msg)
 		}
 		return nil
 	})
@@ -194,10 +189,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 	}
 
 	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeSystem, func(msg *hub.Message) error {
-		select {
-		case m.msgCh <- msg:
-		default:
-		}
+		m.msgCh.Push(msg)
 		return nil
 	})
 	if err == nil {
@@ -207,10 +199,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeAggregate, func(msg *hub.Message) error {
 		// Skip aggregate_request signals
 		if msg.Content != "aggregate_request" {
-			select {
-			case m.msgCh <- msg:
-			default:
-			}
+			m.msgCh.Push(msg)
 		}
 		return nil
 	})
@@ -222,10 +211,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeParticipantEvent, func(msg *hub.Message) error {
 		p := m.parseParticipantEvent(msg)
 		if p != nil {
-			select {
-			case m.participantCh <- p:
-			default:
-			}
+			m.participantCh.Push(p)
 		}
 		return nil
 	})
@@ -235,10 +221,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 
 	// Subscribe to round changes
 	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeRoundChange, func(msg *hub.Message) error {
-		select {
-		case m.roundCh <- msg.Round:
-		default:
-		}
+		m.roundCh.Push(msg.Round)
 		return nil
 	})
 	if err == nil {
