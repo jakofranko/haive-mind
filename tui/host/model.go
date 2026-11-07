@@ -206,6 +206,7 @@ func (m *AppModel) setupSubscriptions() tea.Cmd {
 		hub.MessageTypeSystem,
 		hub.MessageTypeAggregate,
 		hub.MessageTypeAggregateDraft,
+		hub.MessageTypeAgentError,
 	}, func(msg *hub.Message) error {
 		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
 			return nil // a signal to the coordinator, not transcript content
@@ -309,6 +310,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
+		if msg.Type == hub.MessageTypeAgentError {
+			return m, tea.Batch(m.showAgentError(hub.Message(msg)), m.listenForMessages())
+		}
 		m.transcript.AddMessage(hub.Message(msg))
 		if msg.Type == hub.MessageTypeAggregateDraft {
 			m.openDraft(msg.Content)
@@ -351,6 +355,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 
+	if updated, cmd := m.toast.Update(msg); true {
+		m.toast = updated.(toast.Model)
+		cmds = append(cmds, cmd)
+	}
 	cmds = append(cmds, m.forwardToFocused(msg)...)
 	return m, tea.Batch(cmds...)
 }
@@ -631,4 +639,23 @@ func (m *AppModel) namePromptView() string {
 	prompt := promptStyle.Render("Enter display name:\n\n" + m.namePrompt.View())
 
 	return lipgloss.JoinVertical(lipgloss.Center, title, prompt)
+}
+
+// showAgentError raises a toast for a failed agent call; Retry sends the failed
+// message through the hub again.
+func (m *AppModel) showAgentError(failed hub.Message) tea.Cmd {
+	var retry func() tea.Cmd
+	if failed.Retry != nil {
+		again := *failed.Retry
+		round := failed.Round
+		retry = func() tea.Cmd {
+			return func() tea.Msg {
+				if err := m.hub.Send(context.Background(), hub.NewMessage(again.Type, "host", again.Content, round)); err != nil {
+					return errorMsg(err)
+				}
+				return nil
+			}
+		}
+	}
+	return toast.ShowToast(failed.Content, true, retry)
 }
