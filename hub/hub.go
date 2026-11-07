@@ -80,18 +80,18 @@ func (s *subscription) Unsubscribe() {
 }
 
 type hubImpl struct {
-	mu              sync.RWMutex
-	handlers        map[MessageType][]*handlerEntry
-	participants    map[string]*Participant
-	displayNames    map[string]string
-	drafts          map[string]string
-	agentRunner     agent.Runner
-	synthesizer     agent.Runner
-	ctx             context.Context
-	cancel          context.CancelFunc
-	wg              sync.WaitGroup
-	started         bool
-	outbound        chan *Message
+	mu           sync.RWMutex
+	handlers     map[MessageType][]*handlerEntry
+	participants map[string]*Participant
+	displayNames map[string]string
+	drafts       map[string]string
+	agentRunner  agent.Runner
+	synthesizer  agent.Runner
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	started      bool
+	outbound     chan *Message
 
 	// closeMu guards closed and the close of outbound: Send holds the read
 	// lock so Stop cannot close the channel underneath an in-progress send.
@@ -369,6 +369,7 @@ func (h *hubImpl) invokeSynthesizer(msg *Message) {
 		out, err := runner.Run(h.ctx, msg.Content)
 		if err != nil {
 			h.Send(h.ctx, NewMessage(MessageTypeSystem, "hub", "Synthesis failed: "+err.Error(), msg.Round))
+			h.reportFailure("Synthesis failed: "+err.Error(), msg)
 			return
 		}
 		h.Send(h.ctx, NewMessage(MessageTypeAggregateDraft, "synthesizer", out, msg.Round))
@@ -394,6 +395,7 @@ func (h *hubImpl) invokeAgent(msg *Message) {
 		if err != nil {
 			errMsg := NewMessage(MessageTypeSystem, "hub", "Agent error: "+err.Error(), msg.Round)
 			h.Send(h.ctx, errMsg)
+			h.reportFailure("Agent error: "+err.Error(), msg)
 			return
 		}
 
@@ -434,4 +436,11 @@ func (h *hubImpl) GetParticipants() []*Participant {
 		participants = append(participants, p)
 	}
 	return participants
+}
+
+// reportFailure tells the host a call failed and how to try it again.
+func (h *hubImpl) reportFailure(text string, failed *Message) {
+	m := NewMessage(MessageTypeAgentError, "hub", text, failed.Round)
+	m.Retry = &Retry{Type: failed.Type, Content: failed.Content}
+	h.Send(h.ctx, m)
 }

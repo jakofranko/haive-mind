@@ -20,17 +20,18 @@ const (
 type MessageType string
 
 const (
-	MessageTypeDirective       MessageType = "directive"
-	MessageTypeResponse        MessageType = "response"
-	MessageTypeSystem          MessageType = "system"
-	MessageTypeAggregate       MessageType = "aggregate"
-	MessageTypeNewRound        MessageType = "new_round"
-	MessageTypeRoundChange     MessageType = "round_change"
-	MessageTypeExport          MessageType = "export"
-	MessageTypeExportComplete  MessageType = "export_complete"
+	MessageTypeDirective        MessageType = "directive"
+	MessageTypeResponse         MessageType = "response"
+	MessageTypeSystem           MessageType = "system"
+	MessageTypeAggregate        MessageType = "aggregate"
+	MessageTypeNewRound         MessageType = "new_round"
+	MessageTypeRoundChange      MessageType = "round_change"
+	MessageTypeExport           MessageType = "export"
+	MessageTypeExportComplete   MessageType = "export_complete"
 	MessageTypeParticipantEvent MessageType = "participant_event"
 	MessageTypeSynthesisRequest MessageType = "synthesis_request"
 	MessageTypeAggregateDraft   MessageType = "aggregate_draft"
+	MessageTypeAgentError       MessageType = "agent_error"
 )
 
 type Message struct {
@@ -41,6 +42,8 @@ type Message struct {
 	Content   string      `json:"content"`
 	Timestamp time.Time   `json:"timestamp"`
 	Round     int         `json:"round"`
+	// Retry, on an agent_error, is the message to send again to retry.
+	Retry *Retry `json:"retry,omitempty"`
 }
 
 func NewMessage(msgType MessageType, from, content string, round int) *Message {
@@ -80,4 +83,10 @@ func NewParticipantEvent(name, displayName string, status ParticipantStatus, rou
 		Round:       round,
 		Event:       event,
 	}
+}
+
+// Retry names a message to send again after the call it triggered failed.
+type Retry struct {
+	Type    MessageType `json:"type"`
+	Content string      `json:"content"`
 }
