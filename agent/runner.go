@@ -2,7 +2,10 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -17,7 +20,12 @@ type defaultRunner struct {
 }
 
 func NewDefaultRunner() *defaultRunner {
-	return &defaultRunner{timeout: defaultAgentTimeout}
+	return NewRunner(defaultAgentTimeout)
+}
+
+// NewRunner returns a runner that gives the agent up to timeout to answer.
+func NewRunner(timeout time.Duration) *defaultRunner {
+	return &defaultRunner{timeout: timeout}
 }
 
 func (r *defaultRunner) Run(ctx context.Context, prompt string) (string, error) {
@@ -25,10 +33,16 @@ func (r *defaultRunner) Run(ctx context.Context, prompt string) (string, error) 
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, "opencode", "run", prompt)
-	output, err := cmd.CombinedOutput()
+	output, err := cmd.Output() // stdout only: stderr is diagnostics, not the answer
 	if err != nil {
 		if cmdCtx.Err() == context.DeadlineExceeded {
 			return "", ErrAgentTimeout
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			if stderr := strings.TrimSpace(string(exitErr.Stderr)); stderr != "" {
+				return "", fmt.Errorf("%w: %s", err, stderr)
+			}
 		}
 		return "", err
 	}
