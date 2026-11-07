@@ -1,125 +1,118 @@
 package participant
 
 import (
+	"bytes"
 	"context"
+	"regexp"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	tea "github.com/charmbracelet/bubbletea"
 	"jakofranko/haive-mind/hub"
 )
 
-func TestParticipantModel_ReceivesMessages(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// syncBuffer is an output sink the test can read while the program writes.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
 
-	hubChans := hub.NewHub()
-	if err := hubChans.Start(); err != nil {
-		t.Fatalf("Failed to start hub: %v", err)
-	}
-	defer hubChans.Stop()
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
 
-	// Register participants BEFORE creating model (simulating real scenario)
-	hubChans.RegisterParticipant(hub.NewParticipantEvent("host", "Host", hub.StatusIdle, 1, hub.ParticipantEventConnect))
-	hubChans.RegisterParticipant(hub.NewParticipantEvent("Agent-user1", "Participant One", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+var ansiCodes = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 
-	// Create participant model
-	model := NewParticipantModel(hubChans, "Agent-user1", "user1")
+// text is everything the program has drawn so far, without escape codes.
+func (b *syncBuffer) text() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return ansiCodes.ReplaceAllString(b.buf.String(), "")
+}
 
-	// Run program in background
-	prog := tea.NewProgram(model)
+// runProgram runs the model as a real Bubble Tea program and returns what it
+// draws. The test sees only that output, never the model's state, so nothing is
+// read from two goroutines.
+func runProgram(t *testing.T, model *ParticipantModel) *syncBuffer {
+	t.Helper()
+	out := &syncBuffer{}
+	prog := tea.NewProgram(model, tea.WithInput(nil), tea.WithOutput(out))
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		if _, err := prog.Run(); err != nil {
 			t.Logf("Program error: %v", err)
 		}
 	}()
+	t.Cleanup(func() {
+		prog.Quit()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("program did not stop")
+		}
+	})
 
-	// Wait for subscriptions to be ready
 	select {
 	case <-model.SubscriptionsReady():
 	case <-time.After(5 * time.Second):
 		t.Fatal("Timeout waiting for subscriptions to be ready")
 	}
+	prog.Send(tea.WindowSizeMsg{Width: 120, Height: 40})
+	return out
+}
 
-	// Wait for initial participants to be fetched
-	for i := 0; i < 50; i++ {
-		participants := model.sidebar.GetParticipants()
-		if len(participants) >= 2 {
-			break
+func eventuallyDrawn(t *testing.T, out *syncBuffer, want ...string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		screen := out.text()
+		ok := true
+		for _, w := range want {
+			if !strings.Contains(screen, w) {
+				ok = false
+			}
 		}
-		time.Sleep(50 * time.Millisecond)
+		if ok {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
+	t.Fatalf("never drew %q. Output so far:\n%s", want, out.text())
+}
 
-	// Set transcript size (simulate window size)
-	model.transcript.SetSize(80, 20)
+func startedHub(t *testing.T) hub.Hub {
+	t.Helper()
+	h := hub.NewHub()
+	if err := h.Start(); err != nil {
+		t.Fatalf("Failed to start hub: %v", err)
+	}
+	t.Cleanup(func() { h.Stop() })
+	h.SetDisplayName("user1", "Participant One")
+	h.RegisterParticipant(hub.NewParticipantEvent("host", "Host", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user1", "Participant One", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	return h
+}
 
-	// Send a message through the hub
-	msg := hub.NewMessage(hub.MessageTypeDirective, "Host", "Test directive", 1)
-	hubChans.Send(ctx, msg)
+func TestParticipantModel_ReceivesMessages(t *testing.T) {
+	h := startedHub(t)
+	out := runProgram(t, NewParticipantModel(h, "Agent-user1", "user1"))
 
-	// Wait for message to be received
-	time.Sleep(500 * time.Millisecond)
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeDirective, "Host", "Test directive", 1))
 
-	// Check if transcript has the message
-	transcriptContent := model.transcript.View()
-	assert.Contains(t, transcriptContent, "Test directive")
-	assert.Contains(t, transcriptContent, "Host")
+	eventuallyDrawn(t, out, "Test directive", "Host")
 }
 
 func TestParticipantModel_ReceivesParticipantEvents(t *testing.T) {
-	hubChans := hub.NewHub()
-	if err := hubChans.Start(); err != nil {
-		t.Fatalf("Failed to start hub: %v", err)
-	}
-	defer hubChans.Stop()
+	h := startedHub(t)
+	out := runProgram(t, NewParticipantModel(h, "Agent-user1", "user1"))
+	eventuallyDrawn(t, out, "Participant One")
 
-	// Register initial participants BEFORE creating model
-	hubChans.RegisterParticipant(hub.NewParticipantEvent("host", "Host", hub.StatusIdle, 1, hub.ParticipantEventConnect))
-	hubChans.RegisterParticipant(hub.NewParticipantEvent("Agent-user1", "Participant One", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user2", "Participant Two", hub.StatusIdle, 1, hub.ParticipantEventConnect))
 
-	// Create participant model
-	model := NewParticipantModel(hubChans, "Agent-user1", "user1")
-
-	// Run program in background
-	prog := tea.NewProgram(model)
-	go func() {
-		if _, err := prog.Run(); err != nil {
-			t.Logf("Program error: %v", err)
-		}
-	}()
-
-	// Wait for subscriptions to be ready
-	select {
-	case <-model.SubscriptionsReady():
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for subscriptions to be ready")
-	}
-
-	// Wait for initial participants to be fetched
-	for i := 0; i < 50; i++ {
-		participants := model.sidebar.GetParticipants()
-		if len(participants) >= 2 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	// Register another participant (simulating someone joining)
-	hubChans.RegisterParticipant(hub.NewParticipantEvent("Agent-user2", "Participant Two", hub.StatusIdle, 1, hub.ParticipantEventConnect))
-
-	// Wait for participant event to be processed
-	time.Sleep(500 * time.Millisecond)
-
-	// Check sidebar has all three participants
-	participants := model.sidebar.GetParticipants()
-	assert.Len(t, participants, 3)
-	
-	names := make(map[string]bool)
-	for _, p := range participants {
-		names[p.Name] = true
-	}
-	assert.True(t, names["host"])
-	assert.True(t, names["Agent-user1"])
-	assert.True(t, names["Agent-user2"])
+	eventuallyDrawn(t, out, "Participant Two")
 }
