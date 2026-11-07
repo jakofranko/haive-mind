@@ -32,6 +32,8 @@ type term struct {
 	mu   sync.Mutex
 	buf  bytes.Buffer
 	in   io.WriteCloser
+	// disconnect ends this SSH session, as a dropped connection would.
+	disconnect func()
 }
 
 func (tm *term) screen() string {
@@ -116,7 +118,8 @@ func connect(t *testing.T, addr, user string) *term {
 			}
 		}
 	}()
-	t.Cleanup(func() { sess.Close(); client.Close() })
+	tm.disconnect = func() { sess.Close(); client.Close() }
+	t.Cleanup(tm.disconnect)
 	return tm
 }
 
@@ -317,4 +320,25 @@ func TestFullRound(t *testing.T) {
 	if prompts[2] != "AGENTREPLY-Several (edited)" {
 		t.Errorf("aggregate sent to agent = %q, want the host's edited draft", prompts[2])
 	}
+}
+
+// G14: text a participant has typed but not sent is waiting for them when they
+// reconnect.
+func TestDraftSurvivesReconnect(t *testing.T) {
+	addr, _, _ := startServer(t)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+	alice := connect(t, addr, "alice")
+	alice.joinAs(t, "Alice")
+
+	alice.send(t, "\t\t") // transcript -> sidebar -> response
+	alice.send(t, "half-formed-thought")
+	host.waitFor(t, "Alice  typing")
+
+	alice.disconnect()
+	time.Sleep(300 * time.Millisecond) // let the server notice
+
+	back := connect(t, addr, "alice") // same SSH user: no name prompt this time
+	back.waitFor(t, "half-formed-thought")
 }

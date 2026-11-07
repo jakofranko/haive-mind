@@ -81,6 +81,11 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 		subscriptionsReady: make(chan struct{}),
 	}
 
+	// Pick up text a previous session left unsent.
+	if draft := hubChans.GetDraft(yourName); draft != "" {
+		m.response.SetDraft(draft)
+	}
+
 	m.sidebar.SetYourName(yourName)
 	m.sidebar.SetParticipants([]hub.Participant{
 		{Name: m.id, DisplayName: yourName, Status: hub.StatusIdle, Round: 0},
@@ -420,6 +425,7 @@ func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
 	msg := hub.NewMessage(hub.MessageTypeResponse, m.yourName, content, m.round)
 	m.hub.Send(context.Background(), msg)
 	m.setStatus(hub.StatusSubmitted)
+	m.hub.SetDraft(m.id, "")
 
 	m.response.Reset()
 	return m, m.response.Focus()
@@ -438,6 +444,7 @@ func (m *ParticipantModel) setStatus(status hub.ParticipantStatus) {
 // again if it is emptied. A submitted response stays submitted until the box
 // has text again or the round changes.
 func (m *ParticipantModel) syncTypingStatus() {
+	m.hub.SetDraft(m.id, m.response.Value()) // so a reconnect can restore it
 	switch {
 	case strings.TrimSpace(m.response.Value()) != "":
 		m.setStatus(hub.StatusTyping)

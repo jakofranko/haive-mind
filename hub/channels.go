@@ -22,6 +22,8 @@ type Hub interface {
 	UnregisterParticipant(name string) error
 	GetDisplayName(name string) string
 	SetDisplayName(name, displayName string)
+	SetDraft(name, text string)
+	GetDraft(name string) string
 	SetAgentRunner(runner agent.Runner)
 	SetSynthesizer(runner agent.Runner)
 	SendToAgent(ctx context.Context, prompt string) (string, error)

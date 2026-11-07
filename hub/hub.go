@@ -84,6 +84,7 @@ type hubImpl struct {
 	handlers        map[MessageType][]*handlerEntry
 	participants    map[string]*Participant
 	displayNames    map[string]string
+	drafts          map[string]string
 	agentRunner     agent.Runner
 	synthesizer     agent.Runner
 	ctx             context.Context
@@ -104,6 +105,7 @@ func NewHub() *hubImpl {
 		handlers:     make(map[MessageType][]*handlerEntry),
 		participants: make(map[string]*Participant),
 		displayNames: make(map[string]string),
+		drafts:       make(map[string]string),
 		agentRunner:  agent.NewDefaultRunner(),
 		synthesizer:  agent.NewDefaultRunner(),
 		ctx:          ctx,
@@ -248,6 +250,24 @@ func (h *hubImpl) SetDisplayName(name, displayName string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.displayNames[name] = displayName
+}
+
+// SetDraft stores a participant's unsent text, keyed by their stable id so it
+// outlives any one session. Empty text clears it.
+func (h *hubImpl) SetDraft(name, text string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if text == "" {
+		delete(h.drafts, name)
+		return
+	}
+	h.drafts[name] = text
+}
+
+func (h *hubImpl) GetDraft(name string) string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.drafts[name]
 }
 
 func (h *hubImpl) SetAgentRunner(runner agent.Runner) {
