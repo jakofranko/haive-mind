@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/ssh"
+	"jakofranko/haive-mind/agent"
 	"jakofranko/haive-mind/coordinator"
 	"jakofranko/haive-mind/hub"
 	"jakofranko/haive-mind/sshserver"
@@ -30,6 +31,7 @@ func main() {
 	dataDir := flag.String("data-dir", "", "Data directory for transcript storage")
 	debug := flag.Bool("debug", false, "Enable debug logging (hub event trace)")
 	logFile := flag.String("log-file", "", "Log file path (JSON format)")
+	agentTimeout := flag.Duration("agent-timeout", 120*time.Second, "How long to wait for the agent (and the synthesizer) to answer")
 
 	flag.Parse()
 
@@ -40,6 +42,8 @@ func main() {
 	defer cancel()
 
 	hubChans := hub.NewHub()
+	hubChans.SetAgentRunner(agent.NewRunner(*agentTimeout))
+	hubChans.SetSynthesizer(agent.NewRunner(*agentTimeout))
 	slog.Debug("Hub created")
 
 	server := sshserver.NewServer(hubChans, *port, *hostKey)
