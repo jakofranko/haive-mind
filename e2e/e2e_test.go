@@ -354,7 +354,7 @@ func TestDraftSurvivesReconnect(t *testing.T) {
 // host is told with a Retry, and Retry gets the answer once the agent behaves.
 func TestAgentTimeoutThenRetry(t *testing.T) {
 	addr, _, agentLog := startServerWith(t,
-		[]string{"--agent-timeout", "400ms"},
+		[]string{"--agent-timeout", "2s"},
 		[]string{"FAKE_AGENT_HANG_FIRST=1"})
 
 	host := connect(t, addr, "host")
