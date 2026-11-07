@@ -28,7 +28,8 @@ type ParticipantModel struct {
 	height      int
 	activePane  int
 	round       int
-	yourName    string
+	id          string // stable hub identity (set by the SSH server); never changes
+	yourName    string // display name
 	sshUsername string
 
 	transcript transcript.Model
@@ -62,6 +63,7 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 		hub:                hubChans,
 		activePane:         paneTranscript,
 		round:              1,
+		id:                 yourName,
 		yourName:           yourName,
 		sshUsername:        sshUsername,
 		transcript:         transcript.New(),
@@ -79,7 +81,7 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 
 	m.sidebar.SetYourName(yourName)
 	m.sidebar.SetParticipants([]hub.Participant{
-		{Name: yourName, DisplayName: yourName, Status: hub.StatusIdle, Round: 0},
+		{Name: m.id, DisplayName: yourName, Status: hub.StatusIdle, Round: 0},
 	})
 
 	// Check if we have a stored display name
@@ -87,7 +89,7 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 		m.yourName = displayName
 		m.sidebar.SetYourName(displayName)
 		m.sidebar.SetParticipants([]hub.Participant{
-			{Name: displayName, DisplayName: displayName, Status: hub.StatusIdle, Round: 0},
+			{Name: m.id, DisplayName: displayName, Status: hub.StatusIdle, Round: 0},
 		})
 	} else {
 		// First time - activate name prompt
@@ -360,10 +362,10 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.namePrompt.Blur()
 				m.sidebar.SetYourName(name)
 				m.sidebar.SetParticipants([]hub.Participant{
-					{Name: name, DisplayName: name, Status: hub.StatusIdle, Round: 0},
+					{Name: m.id, DisplayName: name, Status: hub.StatusIdle, Round: 0},
 				})
 				// Send participant update to hub so host panel shows this participant
-				p := hub.NewParticipantEvent(name, name, hub.StatusIdle, m.round, hub.ParticipantEventConnect)
+				p := hub.NewParticipantEvent(m.id, name, hub.StatusIdle, m.round, hub.ParticipantEventConnect)
 				m.hub.RegisterParticipant(p)
 				return m, tea.Batch(
 					m.transcript.Init(),

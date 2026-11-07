@@ -179,7 +179,8 @@ func TestParticipantModel_NamePrompt_Flow(t *testing.T) {
 	assert.False(t, model.namePromptActive)
 	assert.Equal(t, paneTranscript, model.activePane)
 	assert.Equal(t, "John Doe", model.yourName)
-	assert.Equal(t, "John Doe", model.sidebar.GetParticipants()[0].Name)
+	assert.Equal(t, "Agent-1", model.sidebar.GetParticipants()[0].Name)
+	assert.Equal(t, "John Doe", model.sidebar.GetParticipants()[0].DisplayName)
 	assert.Equal(t, "John Doe", hubChans.GetDisplayName("user1"))
 }
 
