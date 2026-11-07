@@ -153,6 +153,16 @@ func (m *Model) UpdateParticipant(updated hub.Participant) {
 	m.participants = append(m.participants, updated)
 }
 
+// RemoveParticipant drops a participant who has disconnected.
+func (m *Model) RemoveParticipant(name string) {
+	for i, p := range m.participants {
+		if p.Name == name {
+			m.participants = append(m.participants[:i], m.participants[i+1:]...)
+			return
+		}
+	}
+}
+
 func (m *Model) SetRound(round int) {
 	m.round = round
 }

@@ -2,6 +2,7 @@ package participant
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"jakofranko/haive-mind/hub"
@@ -51,5 +52,40 @@ func TestParticipant_SidebarRowMatchesHubIdentity(t *testing.T) {
 	row := m.sidebar.GetParticipants()
 	if len(row) != 1 || row[0].Name != "Agent-alice" || row[0].DisplayName != "Alice" {
 		t.Errorf("sidebar = %+v, want one row {Agent-alice, Alice}", row)
+	}
+}
+
+// #29: when someone else disconnects, a participant's sidebar drops them.
+func TestParticipant_OtherDisconnecting_RemovesThemFromSidebar(t *testing.T) {
+	h := hub.NewHub()
+	if err := h.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer h.Stop()
+
+	m := NewParticipantModel(h, "Agent-bob", "bob")
+	m.setupSubscriptions()
+
+	pump := func(what string) {
+		res := make(chan tea.Msg, 1)
+		go func() { res <- m.listenForParticipants()() }()
+		select {
+		case msg := <-res:
+			updated, _ := m.Update(msg)
+			m = updated.(*ParticipantModel)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("the %s update never arrived", what)
+		}
+	}
+
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	pump("connect")
+	h.UnregisterParticipant("Agent-alice")
+	pump("disconnect")
+
+	for _, p := range m.sidebar.GetParticipants() {
+		if p.Name == "Agent-alice" {
+			t.Errorf("Alice is still in the sidebar after disconnecting: %+v", p)
+		}
 	}
 }

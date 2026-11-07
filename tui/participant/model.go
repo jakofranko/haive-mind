@@ -223,6 +223,11 @@ func (m *ParticipantModel) handleMessage(msg *hub.Message) error {
 }
 
 func (m *ParticipantModel) parseParticipantEvent(msg *hub.Message) *hub.Participant {
+	// The hub has already forgotten a participant who disconnected, so there is
+	// nothing to look up: the event itself says who to remove.
+	if msg.Content == hub.ParticipantEventDisconnect {
+		return &hub.Participant{Name: msg.ID, Status: hub.StatusDisconnected, Round: msg.Round, Event: msg.Content}
+	}
 	participants := m.hub.GetParticipants()
 	for _, p := range participants {
 		if p.Name == msg.ID {
@@ -260,7 +265,11 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case participantUpdateMsg:
-		m.sidebar.UpdateParticipant(*msg)
+		if msg.Status == hub.StatusDisconnected {
+			m.sidebar.RemoveParticipant(msg.Name)
+		} else {
+			m.sidebar.UpdateParticipant(*msg)
+		}
 		cmds = append(cmds, m.listenForParticipants())
 		return m, tea.Batch(cmds...)
 

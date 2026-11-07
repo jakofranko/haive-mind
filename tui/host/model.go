@@ -258,6 +258,11 @@ func (m *AppModel) handleMessage(msg *hub.Message) error {
 }
 
 func (m *AppModel) parseParticipantEvent(msg *hub.Message) *hub.Participant {
+	// The hub has already forgotten a participant who disconnected, so there is
+	// nothing to look up: the event itself says who to remove.
+	if msg.Content == hub.ParticipantEventDisconnect {
+		return &hub.Participant{Name: msg.ID, Status: hub.StatusDisconnected, Round: msg.Round, Event: msg.Content}
+	}
 	participants := m.hub.GetParticipants()
 	for _, p := range participants {
 		if p.Name == msg.ID {
