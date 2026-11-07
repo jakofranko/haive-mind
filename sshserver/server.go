@@ -39,8 +39,6 @@ func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 		log.Printf("Failed to subscribe to participant events: %v", err)
 	}
 
-	go mgr.broadcastLoop()
-
 	opts := []ssh.Option{
 		wish.WithAddress(":" + port),
 		wish.WithMiddleware(
@@ -156,23 +154,5 @@ func (m *sessionManager) trackSession(ctx context.Context, session *trackedSessi
 	// Unregister participant from hub
 	if err := m.hub.UnregisterParticipant(session.name); err != nil {
 		log.Printf("Failed to unregister participant: %v", err)
-	}
-}
-
-func (m *sessionManager) broadcastLoop() {
-	for msg := range m.hub.Outbound() {
-		m.mu.Lock()
-		programs := make([]*tea.Program, 0, len(m.participantSessions)+1)
-		if m.hostSession != nil {
-			programs = append(programs, m.hostSession.program)
-		}
-		for _, s := range m.participantSessions {
-			programs = append(programs, s.program)
-		}
-		m.mu.Unlock()
-
-		for _, p := range programs {
-			p.Send(*msg)
-		}
 	}
 }

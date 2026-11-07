@@ -272,10 +272,6 @@ func (h *hubImpl) Stop() error {
 	return nil
 }
 
-func (h *hubImpl) Outbound() <-chan *Message {
-	return h.outbound
-}
-
 func (h *hubImpl) dispatchLoop() {
 	defer h.wg.Done()
 

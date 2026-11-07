@@ -25,6 +25,5 @@ type Hub interface {
 	SendToAgent(ctx context.Context, prompt string) (string, error)
 	Start() error
 	Stop() error
-	Outbound() <-chan *Message
 	GetParticipants() []*Participant
 }
