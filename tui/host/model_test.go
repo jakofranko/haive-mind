@@ -250,5 +250,11 @@ func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
 	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updatedModel.(*AppModel)
 
+	// The coordinator owns the round: pressing the button only asks for a new
+	// one, and the host adopts it when the announcement arrives.
+	assert.Equal(t, 1, model.round)
+
+	updatedModel, _ = model.Update(roundChangedMsg(2))
+	model = updatedModel.(*AppModel)
 	assert.Equal(t, 2, model.round)
 }

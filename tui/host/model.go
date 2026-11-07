@@ -537,8 +537,8 @@ func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 	case "[Send]":
 		return m.handleDirectiveSend()
 	case "[New Round]":
-		m.round++
-		m.hub.StartRound(m.round)
+		// The coordinator owns the round number; we adopt it on RoundChange.
+		m.hub.StartRound(m.round + 1)
 	case "[Export]":
 		exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
 		m.hub.Export(exportPath)
