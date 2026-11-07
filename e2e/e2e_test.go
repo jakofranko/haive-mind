@@ -158,6 +158,11 @@ func exe(name string) string {
 // startServer builds and launches haive-mind with a fake opencode first on
 // PATH, and returns its address and data directory.
 func startServer(t *testing.T) (addr, dataDir, agentLog string) {
+	return startServerWith(t, nil, nil)
+}
+
+// startServerWith adds command-line flags and environment to the server.
+func startServerWith(t *testing.T, flags, env []string) (addr, dataDir, agentLog string) {
 	t.Helper()
 	root := repoRoot(t)
 	bin := t.TempDir()
@@ -168,13 +173,15 @@ func startServer(t *testing.T) (addr, dataDir, agentLog string) {
 	dataDir = t.TempDir()
 	agentLog = filepath.Join(t.TempDir(), "agent.log")
 	var logs bytes.Buffer
-	cmd := exec.Command(filepath.Join(bin, exe("haive-mind")),
+	args := append([]string{
 		"--port", port,
 		"--host-key", filepath.Join(t.TempDir(), "host_key"),
-		"--data-dir", dataDir, "--debug")
+		"--data-dir", dataDir, "--debug"}, flags...)
+	cmd := exec.Command(filepath.Join(bin, exe("haive-mind")), args...)
 	cmd.Env = append(os.Environ(),
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"FAKE_AGENT_LOG="+agentLog)
+	cmd.Env = append(cmd.Env, env...)
 	cmd.Stdout, cmd.Stderr = &logs, &logs
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -341,4 +348,28 @@ func TestDraftSurvivesReconnect(t *testing.T) {
 
 	back := connect(t, addr, "alice") // same SSH user: no name prompt this time
 	back.waitFor(t, "half-formed-thought")
+}
+
+// G15 + G16: an agent that takes too long is cut off at --agent-timeout, the
+// host is told with a Retry, and Retry gets the answer once the agent behaves.
+func TestAgentTimeoutThenRetry(t *testing.T) {
+	addr, _, agentLog := startServerWith(t,
+		[]string{"--agent-timeout", "400ms"},
+		[]string{"FAKE_AGENT_HANG_FIRST=1"})
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+
+	host.send(t, "\t\t")
+	host.send(t, "hello\r")
+	host.waitFor(t, "agent timed out") // the toast
+	host.waitFor(t, "Retry")
+
+	host.send(t, "\r") // Retry
+	host.waitFor(t, "AGENTREPLY-hello")
+
+	b, _ := os.ReadFile(agentLog)
+	if n := strings.Count(string(b), "\n"); n != 2 {
+		t.Errorf("agent invoked %d times, want 2 (the timeout and the retry):\n%s", n, b)
+	}
 }
