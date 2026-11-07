@@ -18,7 +18,7 @@ func main() {
 	}
 	if path := os.Getenv("FAKE_AGENT_LOG"); path != "" {
 		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-			fmt.Fprintln(f, prompt)
+			fmt.Fprintf(f, "%q\n", prompt) // quoted: one record per line even for multi-line prompts
 			f.Close()
 		}
 	}

@@ -19,6 +19,7 @@ type Coordinator struct {
 	transcript []*hub.Message
 	round      int
 	responses  map[int][]*hub.Message
+	directives map[int]string
 }
 
 // aggregateRequest is the Content of the signal message that asks the
@@ -27,9 +28,10 @@ const aggregateRequest = "aggregate_request"
 
 func New(h hub.Hub) *Coordinator {
 	return &Coordinator{
-		hub:       h,
-		round:     1,
-		responses: make(map[int][]*hub.Message),
+		hub:        h,
+		round:      1,
+		responses:  make(map[int][]*hub.Message),
+		directives: make(map[int]string),
 	}
 }
 
@@ -39,6 +41,7 @@ var transcriptTypes = []hub.MessageType{
 	hub.MessageTypeResponse,
 	hub.MessageTypeSystem,
 	hub.MessageTypeAggregate,
+	hub.MessageTypeAggregateDraft,
 	hub.MessageTypeNewRound,
 	hub.MessageTypeRoundChange,
 	hub.MessageTypeExport,
@@ -53,6 +56,9 @@ func (c *Coordinator) Start(ctx context.Context) error {
 		return err
 	}
 	if _, err := c.hub.Subscribe(ctx, hub.MessageTypeResponse, c.trackResponse); err != nil {
+		return err
+	}
+	if _, err := c.hub.Subscribe(ctx, hub.MessageTypeDirective, c.trackDirective); err != nil {
 		return err
 	}
 	if _, err := c.hub.Subscribe(ctx, hub.MessageTypeAggregate, c.handleAggregate); err != nil {
@@ -81,6 +87,14 @@ func (c *Coordinator) Round() int {
 	return c.round
 }
 
+// trackDirective remembers the question the host asked in each round.
+func (c *Coordinator) trackDirective(msg *hub.Message) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.directives[msg.Round] = msg.Content
+	return nil
+}
+
 // trackResponse remembers participant (non-agent) responses by round.
 func (c *Coordinator) trackResponse(msg *hub.Message) error {
 	if msg.From == "agent" {
@@ -92,25 +106,40 @@ func (c *Coordinator) trackResponse(msg *hub.Message) error {
 	return nil
 }
 
-// handleAggregate reacts only to aggregate requests. The aggregate it sends
-// back has real content, so it is ignored here: that is what stops the loop.
+// handleAggregate reacts only to aggregate requests, asking the hub to
+// synthesize this round's responses. The host's confirmed aggregate has real
+// content, so it is ignored here: that is what stops the loop.
 func (c *Coordinator) handleAggregate(msg *hub.Message) error {
 	if msg.Content != aggregateRequest {
 		return nil
 	}
 	c.mu.Lock()
 	round := c.round
-	parts := make([]string, 0, len(c.responses[round]))
+	question := c.directives[round]
+	var lines []string
 	for _, r := range c.responses[round] {
-		parts = append(parts, r.From+": "+r.Content)
+		lines = append(lines, "- "+r.From+": "+r.Content)
 	}
 	c.mu.Unlock()
 
-	if len(parts) == 0 {
+	if len(lines) == 0 {
 		return nil
 	}
-	content := "Aggregated responses: " + strings.Join(parts, "; ")
-	return c.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregate, "Host", content, round))
+	prompt := synthesisPrompt(question, lines)
+	return c.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeSynthesisRequest, "hub", prompt, round))
+}
+
+// synthesisPrompt asks for one combined answer to the question, noting where
+// participants disagree.
+func synthesisPrompt(question string, responses []string) string {
+	var b strings.Builder
+	b.WriteString("Several participants answered the question below. Write one concise answer ")
+	b.WriteString("that represents the group, and point out any disagreements.")
+	b.WriteString("\n\nQuestion: ")
+	b.WriteString(question)
+	b.WriteString("\n\nResponses:\n")
+	b.WriteString(strings.Join(responses, "\n"))
+	return b.String()
 }
 
 func (c *Coordinator) record(msg *hub.Message) error {

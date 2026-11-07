@@ -29,6 +29,8 @@ const (
 	MessageTypeExport          MessageType = "export"
 	MessageTypeExportComplete  MessageType = "export_complete"
 	MessageTypeParticipantEvent MessageType = "participant_event"
+	MessageTypeSynthesisRequest MessageType = "synthesis_request"
+	MessageTypeAggregateDraft   MessageType = "aggregate_draft"
 )
 
 type Message struct {

@@ -47,6 +47,10 @@ type AppModel struct {
 	namePrompt       textinput.Model
 	namePromptActive bool
 
+	// draftingAggregate is true while the directive input holds a synthesized
+	// aggregate for the host to edit; Enter then sends it as the aggregate.
+	draftingAggregate bool
+
 	// Subscriptions
 	subscriptions []hub.Subscription
 
@@ -201,6 +205,7 @@ func (m *AppModel) setupSubscriptions() tea.Cmd {
 		hub.MessageTypeResponse,
 		hub.MessageTypeSystem,
 		hub.MessageTypeAggregate,
+		hub.MessageTypeAggregateDraft,
 	}, func(msg *hub.Message) error {
 		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
 			return nil // a signal to the coordinator, not transcript content
@@ -300,6 +305,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case hubMessageMsg:
 		m.transcript.AddMessage(hub.Message(msg))
+		if msg.Type == hub.MessageTypeAggregateDraft {
+			m.openDraft(msg.Content)
+		}
 		cmds = append(cmds, m.listenForMessages())
 		return m, tea.Batch(cmds...)
 
@@ -466,6 +474,11 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch m.activePane {
 	case paneDirective:
+		if keyStr == "esc" && m.draftingAggregate {
+			m.draftingAggregate = false
+			m.directive.Reset()
+			return m, nil
+		}
 		if keyStr == "enter" && !isCtrlPressed(msg) {
 			return m.handleDirectiveSend()
 		}
@@ -522,11 +535,24 @@ func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	msg := hub.NewMessage(hub.MessageTypeDirective, m.yourName, content, m.round)
+	msgType := hub.MessageTypeDirective
+	if m.draftingAggregate {
+		msgType = hub.MessageTypeAggregate
+		m.draftingAggregate = false
+	}
+	msg := hub.NewMessage(msgType, m.yourName, content, m.round)
 	m.hub.Send(context.Background(), msg)
 
 	m.directive.Reset()
 	return m, m.directive.Focus()
+}
+
+// openDraft puts a synthesized aggregate in the input for the host to edit.
+func (m *AppModel) openDraft(content string) {
+	m.draftingAggregate = true
+	m.directive.SetValue(content)
+	m.activePane = paneDirective
+	m.updateActiveStates()
 }
 
 func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {

@@ -22,6 +22,7 @@ type Hub interface {
 	GetDisplayName(name string) string
 	SetDisplayName(name, displayName string)
 	SetAgentRunner(runner agent.Runner)
+	SetSynthesizer(runner agent.Runner)
 	SendToAgent(ctx context.Context, prompt string) (string, error)
 	Start() error
 	Stop() error

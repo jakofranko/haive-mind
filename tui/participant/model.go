@@ -175,6 +175,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 		hub.MessageTypeResponse,
 		hub.MessageTypeSystem,
 		hub.MessageTypeAggregate,
+		hub.MessageTypeAggregateDraft,
 	}, func(msg *hub.Message) error {
 		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
 			return nil // a signal to the coordinator, not transcript content

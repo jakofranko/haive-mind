@@ -85,6 +85,7 @@ type hubImpl struct {
 	participants    map[string]*Participant
 	displayNames    map[string]string
 	agentRunner     agent.Runner
+	synthesizer     agent.Runner
 	ctx             context.Context
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
@@ -104,6 +105,7 @@ func NewHub() *hubImpl {
 		participants: make(map[string]*Participant),
 		displayNames: make(map[string]string),
 		agentRunner:  agent.NewDefaultRunner(),
+		synthesizer:  agent.NewDefaultRunner(),
 		ctx:          ctx,
 		cancel:       cancel,
 		outbound:     make(chan *Message, 100),
@@ -234,6 +236,14 @@ func (h *hubImpl) SetAgentRunner(runner agent.Runner) {
 	h.agentRunner = runner
 }
 
+// SetSynthesizer sets the runner used for one-off aggregate synthesis. It is
+// separate from the agent runner because synthesis needs no session context.
+func (h *hubImpl) SetSynthesizer(runner agent.Runner) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.synthesizer = runner
+}
+
 func (h *hubImpl) SendToAgent(ctx context.Context, prompt string) (string, error) {
 	h.mu.RLock()
 	runner := h.agentRunner
@@ -298,6 +308,31 @@ func (h *hubImpl) dispatch(msg *Message) {
 	if msg.Type == MessageTypeDirective || msg.Type == MessageTypeAggregate {
 		h.invokeAgent(msg)
 	}
+	if msg.Type == MessageTypeSynthesisRequest {
+		h.invokeSynthesizer(msg)
+	}
+}
+
+// invokeSynthesizer runs the one-off synthesis and publishes the result as a
+// draft, or a system message if it fails.
+func (h *hubImpl) invokeSynthesizer(msg *Message) {
+	h.mu.RLock()
+	runner := h.synthesizer
+	h.mu.RUnlock()
+	if runner == nil {
+		return
+	}
+
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		out, err := runner.Run(h.ctx, msg.Content)
+		if err != nil {
+			h.Send(h.ctx, NewMessage(MessageTypeSystem, "hub", "Synthesis failed: "+err.Error(), msg.Round))
+			return
+		}
+		h.Send(h.ctx, NewMessage(MessageTypeAggregateDraft, "synthesizer", out, msg.Round))
+	}()
 }
 
 func (h *hubImpl) invokeAgent(msg *Message) {

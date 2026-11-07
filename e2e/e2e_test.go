@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -236,15 +237,23 @@ func TestFullRound(t *testing.T) {
 		tm.waitFor(t, "bobsays-sqlite")
 	}
 
-	// Host aggregates: Tab on to the buttons; [Aggregate] is first.
+	// Host aggregates: Tab on to the buttons; [Aggregate] is first. The
+	// synthesis comes back as a draft that everyone sees.
 	host.send(t, "\t")
 	host.send(t, "\r")
 	for _, tm := range []*term{host, alice, bob} {
-		tm.waitFor(t, "AGENTREPLY-Aggregated")
+		tm.waitFor(t, "AGENTREPLY-Several")
+	}
+
+	// The draft opens in the host's input; the host edits it and sends it.
+	host.send(t, " (edited)\r")
+	for _, tm := range []*term{host, alice, bob} {
+		tm.waitFor(t, "AGENTREPLY-AGENTREPLY-Several")
 	}
 
 	// Host exports (button 4: three moves right) and the file is valid JSON
 	// containing the whole round.
+	host.send(t, "\t") // the host is still in the input pane after sending
 	for i := 0; i < 3; i++ { // one key event per press; "lll" would be a single event
 		host.send(t, "l")
 	}
@@ -265,7 +274,7 @@ func TestFullRound(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("exported transcript is not valid JSON: %v", err)
 	}
-	for _, want := range []string{"hello", "AGENTREPLY-hello", "alicesays-postgres", "bobsays-sqlite", "AGENTREPLY-Aggregated"} {
+	for _, want := range []string{"hello", "AGENTREPLY-hello", "alicesays-postgres", "bobsays-sqlite", "AGENTREPLY-AGENTREPLY-Several"} {
 		found := false
 		for _, m := range doc.Messages {
 			if strings.Contains(m.Content, want) {
@@ -277,19 +286,32 @@ func TestFullRound(t *testing.T) {
 		}
 	}
 
-	// Each prompt reached the agent exactly once: no duplicate invocations.
+	// Every call reached its runner exactly once: the directive, one
+	// synthesis of both responses, and the host's edited aggregate.
 	b, err := os.ReadFile(agentLog)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prompts := strings.Split(strings.TrimSpace(string(b)), "\n")
-	want := []string{"hello", "Aggregated responses: Alice: alicesays-postgres; Bobby: bobsays-sqlite"}
-	if len(prompts) != len(want) {
-		t.Fatalf("agent invoked %d times, want %d: %q", len(prompts), len(want), prompts)
-	}
-	for i := range want {
-		if prompts[i] != want[i] {
-			t.Errorf("agent prompt %d = %q, want %q", i, prompts[i], want[i])
+	var prompts []string
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		p, err := strconv.Unquote(line)
+		if err != nil {
+			t.Fatalf("bad agent log line %q: %v", line, err)
 		}
+		prompts = append(prompts, p)
+	}
+	if len(prompts) != 3 {
+		t.Fatalf("fake opencode invoked %d times, want 3: %q", len(prompts), prompts)
+	}
+	if prompts[0] != "hello" {
+		t.Errorf("prompt 0 = %q, want the directive", prompts[0])
+	}
+	for _, want := range []string{"hello", "Alice: alicesays-postgres", "Bobby: bobsays-sqlite"} {
+		if !strings.Contains(prompts[1], want) {
+			t.Errorf("synthesis prompt lacks %q: %s", want, prompts[1])
+		}
+	}
+	if prompts[2] != "AGENTREPLY-Several (edited)" {
+		t.Errorf("aggregate sent to agent = %q, want the host's edited draft", prompts[2])
 	}
 }

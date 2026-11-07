@@ -84,3 +84,22 @@ func TestParticipantModel_MixedTypes_ArriveInSendOrder(t *testing.T) {
 		}
 	}
 }
+
+// G11: the synthesized aggregate draft is shared with everyone, so a
+// participant receives it like any other transcript message.
+func TestParticipantModel_ReceivesAggregateDraft(t *testing.T) {
+	h := hub.NewHub()
+	if err := h.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer h.Stop()
+
+	m := NewParticipantModel(h, "Alice", "alice")
+	m.Init()
+
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "draft-text", 1))
+
+	if got := drainInbound(m); !got["draft-text"] {
+		t.Errorf("participant did not receive the aggregate draft; got %v", got)
+	}
+}
