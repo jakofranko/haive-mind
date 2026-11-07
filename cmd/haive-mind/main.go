@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -123,27 +124,34 @@ func main() {
 }
 
 func setupLogging(logFile string, debug bool) {
-	var handler slog.Handler
-	if logFile != "" {
-		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			slog.Error("Failed to open log file", "error", err)
-			os.Exit(1)
-		}
-		handler = slog.NewJSONHandler(f, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		})
-	} else {
-		level := slog.LevelInfo
-		if debug {
-			level = slog.LevelDebug
-		}
-		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: level,
-		})
+	logger, _, err := newLogger(logFile, debug, os.Stdout)
+	if err != nil {
+		slog.Error("Failed to open log file", "error", err)
+		os.Exit(1)
 	}
-	slog.SetDefault(slog.New(handler))
+	// SetDefault also routes the standard library's log package through here.
+	slog.SetDefault(logger)
 	slog.Info("Logging configured", "logFile", logFile, "debug", debug)
+}
+
+// newLogger writes readable text to stdout and, when logFile is set, the same
+// events as JSON to that file. Debug detail appears only when debug is set.
+// The returned func closes the log file.
+func newLogger(logFile string, debug bool, stdout io.Writer) (*slog.Logger, func(), error) {
+	level := slog.LevelInfo
+	if debug {
+		level = slog.LevelDebug
+	}
+	opts := &slog.HandlerOptions{Level: level}
+	text := slog.NewTextHandler(stdout, opts)
+	if logFile == "" {
+		return slog.New(text), func() {}, nil
+	}
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil, nil, err
+	}
+	return slog.New(slog.NewMultiHandler(text, slog.NewJSONHandler(f, opts))), func() { f.Close() }, nil
 }
 
 func shutdown(server *ssh.Server, h hub.Hub, snapshot func() *Transcript, dataDir string) {
