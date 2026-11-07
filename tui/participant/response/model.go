@@ -44,10 +44,10 @@ func defaultStyles() Styles {
 
 func New() Model {
 	input := textarea.New()
-	input.Placeholder = "Type your response here... (Enter to submit, Ctrl+Enter for newline)"
+	input.Placeholder = "Type your response here... (Enter to submit, Ctrl+J for newline)"
 	input.Focus()
 	input.KeyMap.InsertNewline.SetEnabled(true)
-	input.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("ctrl+enter"))
+	input.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("ctrl+j", "alt+enter"))
 	input.ShowLineNumbers = false
 	input.CharLimit = 5000
 
@@ -99,7 +99,7 @@ func (m Model) View() string {
 		border = m.styles.activeBorder
 	}
 
-	title := m.styles.title.Render("Response (Enter=Submit, Ctrl+Enter=Newline)")
+	title := m.styles.title.Render("Response (Enter=Submit, Ctrl+J=Newline)")
 	content := m.input.View()
 	return border.Render(title + "\n" + content)
 }

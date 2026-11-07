@@ -6,7 +6,7 @@
 │                              ││ Agent-4  ready         │                                  
 │                              │╰────────────────────────╯                                  
 │                              │╭────────────────────────────────────────────────────────╮  
-│                              ││ Directive (Enter=Send, Ctrl+Enter=Newline)             │  
+│                              ││ Directive (Enter=Send, Ctrl+J=Newline)                 │  
 │                              ││┃ Type directive here...                                │  
 │                              ││┃                                                       │  
 │                              ││┃                                                       │  

@@ -3,7 +3,7 @@
 │                                                        ││                        │                                  
 │---                                                     │╰────────────────────────╯                                  
 │[10:30:45] **Agent-1** (Round 1):                       │╭────────────────────────────────────────────────────────╮  
-│                                                        ││ Directive (Enter=Send, Ctrl+Enter=Newline)             │  
+│                                                        ││ Directive (Enter=Send, Ctrl+J=Newline)                 │  
 │  Response with code                                    ││┃ Type directive here...                                │  
 │                                                        ││┃                                                       │  
 │                                                        ││┃                                                       │  
