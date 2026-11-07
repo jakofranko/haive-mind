@@ -1,0 +1,295 @@
+// Package e2e drives the real haive-mind binary over SSH, the way a host and
+// participants would, with a fake `opencode` standing in for the agent.
+package e2e
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"golang.org/x/crypto/ssh"
+)
+
+var ansi = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07`)
+
+// term is one SSH session with a pseudo-terminal, as a user would have.
+type term struct {
+	name string
+	mu   sync.Mutex
+	buf  bytes.Buffer
+	in   io.WriteCloser
+}
+
+func (tm *term) screen() string {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	return ansi.ReplaceAllString(tm.buf.String(), "")
+}
+
+// seen reports whether text has appeared on this terminal at any point.
+func (tm *term) seen(text string) bool { return strings.Contains(tm.screen(), text) }
+
+func (tm *term) waitFor(t *testing.T, text string) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if tm.seen(text) {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("%s: timed out waiting for %q. Screen so far:\n%s", tm.name, text, tail(tm.screen(), 3000))
+}
+
+func (tm *term) send(t *testing.T, s string) {
+	t.Helper()
+	if _, err := io.WriteString(tm.in, s); err != nil {
+		t.Fatalf("%s: write: %v", tm.name, err)
+	}
+	time.Sleep(60 * time.Millisecond) // let the TUI process the keystrokes
+}
+
+func tail(s string, n int) string {
+	if len(s) > n {
+		return s[len(s)-n:]
+	}
+	return s
+}
+
+func connect(t *testing.T, addr, user string) *term {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := ssh.Dial("tcp", addr, &ssh.ClientConfig{
+		User:            user,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("%s: dial: %v", user, err)
+	}
+	sess, err := client.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.RequestPty("xterm-256color", 40, 140, ssh.TerminalModes{ssh.ECHO: 1}); err != nil {
+		t.Fatal(err)
+	}
+	tm := &term{name: user}
+	out, _ := sess.StdoutPipe()
+	tm.in, _ = sess.StdinPipe()
+	if err := sess.Shell(); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		b := make([]byte, 4096)
+		for {
+			n, err := out.Read(b)
+			if n > 0 {
+				tm.mu.Lock()
+				tm.buf.Write(b[:n])
+				tm.mu.Unlock()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	t.Cleanup(func() { sess.Close(); client.Close() })
+	return tm
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(0)
+	return filepath.Dir(filepath.Dir(file))
+}
+
+func goBuild(t *testing.T, root, out, pkg string) {
+	t.Helper()
+	cmd := exec.Command("go", "build", "-o", out, pkg)
+	cmd.Dir = root
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build %s: %v\n%s", pkg, err, b)
+	}
+}
+
+func freePort(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	return fmt.Sprint(l.Addr().(*net.TCPAddr).Port)
+}
+
+func exe(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+// startServer builds and launches haive-mind with a fake opencode first on
+// PATH, and returns its address and data directory.
+func startServer(t *testing.T) (addr, dataDir, agentLog string) {
+	t.Helper()
+	root := repoRoot(t)
+	bin := t.TempDir()
+	goBuild(t, root, filepath.Join(bin, exe("haive-mind")), "./cmd/haive-mind")
+	goBuild(t, root, filepath.Join(bin, exe("opencode")), "./e2e/fakeagent")
+
+	port := freePort(t)
+	dataDir = t.TempDir()
+	agentLog = filepath.Join(t.TempDir(), "agent.log")
+	var logs bytes.Buffer
+	cmd := exec.Command(filepath.Join(bin, exe("haive-mind")),
+		"--port", port,
+		"--host-key", filepath.Join(t.TempDir(), "host_key"),
+		"--data-dir", dataDir, "--debug")
+	cmd.Env = append(os.Environ(),
+		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"FAKE_AGENT_LOG="+agentLog)
+	cmd.Stdout, cmd.Stderr = &logs, &logs
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+		if t.Failed() {
+			t.Logf("server output:\n%s", tail(logs.String(), 4000))
+			b, _ := os.ReadFile(agentLog)
+			t.Logf("fake agent was invoked with:\n%s", b)
+		}
+	})
+
+	addr = "127.0.0.1:" + port
+	for i := 0; i < 100; i++ {
+		if c, err := net.Dial("tcp", addr); err == nil {
+			c.Close()
+			return addr, dataDir, agentLog
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("server never started listening")
+	return
+}
+
+// joinAs completes the first-connect display-name prompt.
+func (tm *term) joinAs(t *testing.T, display string) {
+	t.Helper()
+	tm.waitFor(t, "Enter display name")
+	tm.send(t, display+"\r")
+	tm.waitFor(t, "Participants (Round")
+}
+
+// TestFullRound runs the story from ticket #10: the host directs the agent,
+// two participants respond, the host aggregates, and the agent replies again.
+func TestFullRound(t *testing.T) {
+	addr, dataDir, agentLog := startServer(t)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+	alice := connect(t, addr, "alice")
+	alice.joinAs(t, "Alice")
+	bob := connect(t, addr, "bob")
+	bob.joinAs(t, "Bobby")
+
+	// Host sends a directive: Tab transcript -> participants -> directive.
+	host.send(t, "\t\t")
+	host.send(t, "hello\r")
+	for _, tm := range []*term{host, alice, bob} {
+		tm.waitFor(t, "AGENTREPLY-hello")
+	}
+
+	// Participants respond: Tab transcript -> sidebar -> response.
+	alice.send(t, "\t\t")
+	alice.send(t, "alicesays-postgres\r")
+	bob.send(t, "\t\t")
+	bob.send(t, "bobsays-sqlite\r")
+
+	// Everyone sees both responses, including each other's.
+	for _, tm := range []*term{host, alice, bob} {
+		tm.waitFor(t, "alicesays-postgres")
+		tm.waitFor(t, "bobsays-sqlite")
+	}
+
+	// Host aggregates: Tab on to the buttons; [Aggregate] is first.
+	host.send(t, "\t")
+	host.send(t, "\r")
+	for _, tm := range []*term{host, alice, bob} {
+		tm.waitFor(t, "AGENTREPLY-Aggregated")
+	}
+
+	// Host exports (button 4: three moves right) and the file is valid JSON
+	// containing the whole round.
+	for i := 0; i < 3; i++ { // one key event per press; "lll" would be a single event
+		host.send(t, "l")
+	}
+	host.send(t, "\r")
+	host.waitFor(t, "Exported to")
+
+	files, _ := filepath.Glob(filepath.Join(dataDir, "transcript_*.json"))
+	if len(files) != 1 {
+		t.Fatalf("expected one exported transcript in %s, got %v", dataDir, files)
+	}
+	raw, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Messages []struct{ Content string }
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("exported transcript is not valid JSON: %v", err)
+	}
+	for _, want := range []string{"hello", "AGENTREPLY-hello", "alicesays-postgres", "bobsays-sqlite", "AGENTREPLY-Aggregated"} {
+		found := false
+		for _, m := range doc.Messages {
+			if strings.Contains(m.Content, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("exported transcript has no message containing %q", want)
+		}
+	}
+
+	// Each prompt reached the agent exactly once: no duplicate invocations.
+	b, err := os.ReadFile(agentLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompts := strings.Split(strings.TrimSpace(string(b)), "\n")
+	want := []string{"hello", "Aggregated responses: Alice: alicesays-postgres; Bobby: bobsays-sqlite"}
+	if len(prompts) != len(want) {
+		t.Fatalf("agent invoked %d times, want %d: %q", len(prompts), len(want), prompts)
+	}
+	for i := range want {
+		if prompts[i] != want[i] {
+			t.Errorf("agent prompt %d = %q, want %q", i, prompts[i], want[i])
+		}
+	}
+}
