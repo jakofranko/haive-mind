@@ -202,6 +202,26 @@ func (h *hubImpl) RegisterParticipant(p *Participant) error {
 	return nil
 }
 
+// UpdateParticipantStatus records a new status for a registered participant
+// and announces the change. The stored entry is replaced, not mutated, so
+// copies already handed out stay unchanged.
+func (h *hubImpl) UpdateParticipantStatus(name string, status ParticipantStatus) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	p, ok := h.participants[name]
+	if !ok {
+		return fmt.Errorf("participant %q is not registered", name)
+	}
+	updated := *p
+	updated.Status = status
+	updated.Event = ParticipantEventStatusChange
+	h.participants[name] = &updated
+
+	h.broadcastLocked(MessageTypeParticipantEvent, &updated)
+	return nil
+}
+
 func (h *hubImpl) UnregisterParticipant(name string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()

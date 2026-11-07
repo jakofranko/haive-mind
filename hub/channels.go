@@ -18,6 +18,7 @@ type Hub interface {
 	StartRound(round int) error
 	Export(path string) error
 	RegisterParticipant(p *Participant) error
+	UpdateParticipantStatus(name string, status ParticipantStatus) error
 	UnregisterParticipant(name string) error
 	GetDisplayName(name string) string
 	SetDisplayName(name, displayName string)

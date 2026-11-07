@@ -227,7 +227,10 @@ func TestFullRound(t *testing.T) {
 
 	// Participants respond: Tab transcript -> sidebar -> response.
 	alice.send(t, "\t\t")
-	alice.send(t, "alicesays-postgres\r")
+	alice.send(t, "alicesays-postgres")
+	host.waitFor(t, "Alice  typing") // the host's list follows what participants are doing
+	alice.send(t, "\r")
+	host.waitFor(t, "Alice  submitted")
 	bob.send(t, "\t\t")
 	bob.send(t, "bobsays-sqlite\r")
 

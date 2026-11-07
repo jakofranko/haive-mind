@@ -30,6 +30,7 @@ type ParticipantModel struct {
 	round       int
 	id          string // stable hub identity (set by the SSH server); never changes
 	yourName    string // display name
+	status      hub.ParticipantStatus
 	sshUsername string
 
 	transcript transcript.Model
@@ -64,6 +65,7 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 		activePane:         paneTranscript,
 		round:              1,
 		id:                 yourName,
+		status:             hub.StatusIdle,
 		yourName:           yourName,
 		sshUsername:        sshUsername,
 		transcript:         transcript.New(),
@@ -265,6 +267,7 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case roundChangedMsg:
 		m.round = int(msg)
 		m.sidebar.SetRound(m.round)
+		m.setStatus(hub.StatusIdle)
 		cmds = append(cmds, m.listenForRounds())
 		return m, tea.Batch(cmds...)
 
@@ -390,6 +393,9 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		fallthrough
 	case paneTranscript, paneSidebar:
 		cmds := m.forwardToFocused(msg)
+		if m.activePane == paneResponse {
+			m.syncTypingStatus()
+		}
 		return m, tea.Batch(cmds...)
 	}
 
@@ -404,9 +410,31 @@ func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
 
 	msg := hub.NewMessage(hub.MessageTypeResponse, m.yourName, content, m.round)
 	m.hub.Send(context.Background(), msg)
+	m.setStatus(hub.StatusSubmitted)
 
 	m.response.Reset()
 	return m, m.response.Focus()
+}
+
+// setStatus tells the hub what this participant is doing, once per change.
+func (m *ParticipantModel) setStatus(status hub.ParticipantStatus) {
+	if m.status == status {
+		return
+	}
+	m.status = status
+	m.hub.UpdateParticipantStatus(m.id, status)
+}
+
+// syncTypingStatus reports typing while the response box has text, and idle
+// again if it is emptied. A submitted response stays submitted until the box
+// has text again or the round changes.
+func (m *ParticipantModel) syncTypingStatus() {
+	switch {
+	case strings.TrimSpace(m.response.Value()) != "":
+		m.setStatus(hub.StatusTyping)
+	case m.status == hub.StatusTyping:
+		m.setStatus(hub.StatusIdle)
+	}
 }
 
 func (m *ParticipantModel) updateActiveStates() {
