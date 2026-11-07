@@ -119,6 +119,23 @@ func TestParticipantModel_AddMessage(t *testing.T) {
 	assert.Contains(t, content, "Round 1")
 }
 
+func TestParticipantModel_Update_DirectiveMessage(t *testing.T) {
+	hubChans := hub.NewHub()
+	hubChans.SetDisplayName("user1", "Agent-1")
+	model := NewParticipantModel(hubChans, "Agent-1", "user1")
+
+	model.transcript.SetSize(80, 20)
+
+	msg := hub.NewMessage(hub.MessageTypeDirective, "host", "Test directive", 1)
+	updatedModel, _ := model.Update(hubMessageMsg(*msg))
+	model = updatedModel.(*ParticipantModel)
+
+	content := model.transcript.View()
+	assert.Contains(t, content, "host")
+	assert.Contains(t, content, "Test directive")
+	assert.Contains(t, content, "Round 1")
+}
+
 func TestParticipantModel_UpdateParticipant(t *testing.T) {
 	hubChans := hub.NewHub()
 	hubChans.SetDisplayName("user1", "Agent-1")
