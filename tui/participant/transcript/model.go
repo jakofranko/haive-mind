@@ -57,7 +57,8 @@ func New() Model {
 
 	return Model{
 		viewport: vp,
-		content:  welcome,
+		content:  welcome + `
+`,
 		renderer: renderer,
 		styles:   defaultStyles(),
 	}
@@ -104,7 +105,7 @@ func (m *Model) layout() {
 
 func (m *Model) addMessage(msg hub.Message) {
 	rendered, _ := m.renderer.Render(msg.Content)
-	content := fmt.Sprintf("[%s] **%s** (Round %d):\n%s\n---\n",
+	content := fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
 		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
 
 	m.appendContent(content)
@@ -140,7 +141,7 @@ func (m *Model) SetSize(width, height int) {
 
 func (m *Model) AddMessage(msg hub.Message) {
 	rendered, _ := m.renderer.Render(msg.Content)
-	content := fmt.Sprintf("[%s] **%s** (Round %d):\n%s\n---\n",
+	content := fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
 		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
 
 	m.appendContent(content)
