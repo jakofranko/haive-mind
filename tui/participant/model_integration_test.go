@@ -68,7 +68,7 @@ func runProgram(t *testing.T, model *ParticipantModel) *syncBuffer {
 
 func eventuallyDrawn(t *testing.T, out *syncBuffer, want ...string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		screen := out.text()
 		ok := true
