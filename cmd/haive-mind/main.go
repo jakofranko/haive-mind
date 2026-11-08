@@ -28,7 +28,7 @@ type Transcript struct {
 
 func main() {
 	port := flag.String("port", "2222", "SSH server port")
-	hostKey := flag.String("host-key", "", "Path to SSH host key (generated if not provided)")
+	hostKey := flag.String("host-key", "", "Path to SSH host key. If empty, an id_ed25519 key is generated in (or reused from) the current directory")
 	dataDir := flag.String("data-dir", "", "Data directory for transcript storage")
 	debug := flag.Bool("debug", false, "Enable debug logging (hub event trace)")
 	logFile := flag.String("log-file", "", "Log file path (JSON format)")
