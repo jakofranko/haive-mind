@@ -32,6 +32,9 @@ const (
 	MessageTypeSynthesisRequest MessageType = "synthesis_request"
 	MessageTypeAggregateDraft   MessageType = "aggregate_draft"
 	MessageTypeAgentError       MessageType = "agent_error"
+	MessageTypeConflictFlag     MessageType = "conflict_flag"
+	MessageTypeConflictResolve  MessageType = "conflict_resolve"
+	MessageTypeConflictUpdate   MessageType = "conflict_update"
 )
 
 type Message struct {
@@ -39,6 +42,8 @@ type Message struct {
 	Type      MessageType `json:"type"`
 	From      string      `json:"from"`
 	To        string      `json:"to,omitempty"`
+	// FromID is the sender's stable participant id, when From is a display name.
+	FromID string `json:"from_id,omitempty"`
 	Content   string      `json:"content"`
 	Timestamp time.Time   `json:"timestamp"`
 	Round     int         `json:"round"`

@@ -1,11 +1,13 @@
 // Package coordinator holds the session-level state that sits beside the hub:
-// the transcript, the current round, and the participant responses collected
-// for each round. It reacts to hub messages; it never invokes the agent (the
-// hub owns that).
+// the transcript, the current round, the participant responses collected
+// for each round, and which participants the host has flagged for revision.
+// It reacts to hub messages; it never invokes the agent (the hub owns that).
 package coordinator
 
 import (
 	"context"
+	"encoding/json"
+	"sort"
 	"strings"
 	"sync"
 
@@ -20,6 +22,7 @@ type Coordinator struct {
 	round      int
 	responses  map[int][]*hub.Message
 	directives map[int]string
+	flagged    map[string]bool // participant ids the host asked to revise
 }
 
 // aggregateRequest is the Content of the signal message that asks the
@@ -32,6 +35,7 @@ func New(h hub.Hub) *Coordinator {
 		round:      1,
 		responses:  make(map[int][]*hub.Message),
 		directives: make(map[int]string),
+		flagged:    make(map[string]bool),
 	}
 }
 
@@ -55,28 +59,37 @@ func (c *Coordinator) Start(ctx context.Context) error {
 	if _, err := c.hub.SubscribeTypes(ctx, transcriptTypes, c.record); err != nil {
 		return err
 	}
-	if _, err := c.hub.Subscribe(ctx, hub.MessageTypeResponse, c.trackResponse); err != nil {
-		return err
-	}
-	if _, err := c.hub.Subscribe(ctx, hub.MessageTypeDirective, c.trackDirective); err != nil {
-		return err
-	}
-	if _, err := c.hub.Subscribe(ctx, hub.MessageTypeAggregate, c.handleAggregate); err != nil {
-		return err
-	}
-	if _, err := c.hub.Subscribe(ctx, hub.MessageTypeNewRound, c.handleNewRound); err != nil {
-		return err
+	for _, s := range []struct {
+		typ     hub.MessageType
+		handler func(*hub.Message) error
+	}{
+		{hub.MessageTypeResponse, c.trackResponse},
+		{hub.MessageTypeDirective, c.trackDirective},
+		{hub.MessageTypeAggregate, c.handleAggregate},
+		{hub.MessageTypeNewRound, c.handleNewRound},
+		{hub.MessageTypeConflictFlag, c.handleFlag},
+		{hub.MessageTypeConflictResolve, c.handleResolve},
+	} {
+		if _, err := c.hub.Subscribe(ctx, s.typ, s.handler); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// handleNewRound advances the round and announces the new number.
+// handleNewRound advances the round and announces the new number. Flags belong
+// to a round, so they end with it.
 func (c *Coordinator) handleNewRound(msg *hub.Message) error {
 	c.mu.Lock()
 	c.round++
 	round := c.round
 	c.responses[round] = nil
+	had := len(c.flagged) > 0
+	c.flagged = make(map[string]bool)
 	c.mu.Unlock()
+	if had {
+		c.publishFlags(round)
+	}
 	return c.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeRoundChange, "hub", "", round))
 }
 
@@ -87,6 +100,68 @@ func (c *Coordinator) Round() int {
 	return c.round
 }
 
+// Flagged returns the ids of participants the host has asked to revise, sorted.
+func (c *Coordinator) Flagged() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.flaggedLocked()
+}
+
+func (c *Coordinator) flaggedLocked() []string {
+	ids := make([]string, 0, len(c.flagged))
+	for id := range c.flagged {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// handleFlag flags or unflags the participant named in To.
+func (c *Coordinator) handleFlag(msg *hub.Message) error {
+	c.mu.Lock()
+	changed := false
+	switch msg.Content {
+	case "flag":
+		if msg.To != "" && !c.flagged[msg.To] {
+			c.flagged[msg.To] = true
+			changed = true
+		}
+	case "unflag":
+		if c.flagged[msg.To] {
+			delete(c.flagged, msg.To)
+			changed = true
+		}
+	}
+	round := c.round
+	c.mu.Unlock()
+	if changed {
+		c.publishFlags(round)
+	}
+	return nil
+}
+
+// handleResolve clears every flag.
+func (c *Coordinator) handleResolve(msg *hub.Message) error {
+	c.mu.Lock()
+	had := len(c.flagged) > 0
+	c.flagged = make(map[string]bool)
+	round := c.round
+	c.mu.Unlock()
+	if had {
+		c.publishFlags(round)
+	}
+	return nil
+}
+
+// publishFlags tells everyone who is currently flagged.
+func (c *Coordinator) publishFlags(round int) {
+	c.mu.Lock()
+	ids := c.flaggedLocked()
+	c.mu.Unlock()
+	payload, _ := json.Marshal(ids)
+	c.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeConflictUpdate, "hub", string(payload), round))
+}
+
 // trackDirective remembers the question the host asked in each round.
 func (c *Coordinator) trackDirective(msg *hub.Message) error {
 	c.mu.Lock()
@@ -95,14 +170,40 @@ func (c *Coordinator) trackDirective(msg *hub.Message) error {
 	return nil
 }
 
-// trackResponse remembers participant (non-agent) responses by round.
+// senderID identifies who sent a response: the stable id when there is one.
+func senderID(msg *hub.Message) string {
+	if msg.FromID != "" {
+		return msg.FromID
+	}
+	return msg.From
+}
+
+// trackResponse remembers each participant's latest (non-agent) response by
+// round, and lifts that participant's revision flag.
 func (c *Coordinator) trackResponse(msg *hub.Message) error {
 	if msg.From == "agent" {
 		return nil
 	}
+	id := senderID(msg)
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.responses[msg.Round] = append(c.responses[msg.Round], msg)
+	replaced := false
+	for i, r := range c.responses[msg.Round] {
+		if senderID(r) == id {
+			c.responses[msg.Round][i] = msg
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		c.responses[msg.Round] = append(c.responses[msg.Round], msg)
+	}
+	wasFlagged := c.flagged[id]
+	delete(c.flagged, id)
+	round := c.round
+	c.mu.Unlock()
+	if wasFlagged {
+		c.publishFlags(round)
+	}
 	return nil
 }
 
@@ -129,12 +230,12 @@ func (c *Coordinator) handleAggregate(msg *hub.Message) error {
 	return c.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeSynthesisRequest, "hub", prompt, round))
 }
 
-// synthesisPrompt asks for one combined answer to the question, noting where
-// participants disagree.
+// synthesisPrompt asks for one combined answer to the question. Deciding what
+// counts as a conflict is the host's job, not the model's.
 func synthesisPrompt(question string, responses []string) string {
 	var b strings.Builder
 	b.WriteString("Several participants answered the question below. Write one concise answer ")
-	b.WriteString("that represents the group, and point out any disagreements.")
+	b.WriteString("that represents the group.")
 	b.WriteString("\n\nQuestion: ")
 	b.WriteString(question)
 	b.WriteString("\n\nResponses:\n")
