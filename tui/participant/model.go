@@ -29,7 +29,7 @@ type ParticipantModel struct {
 	activePane    int
 	round         int
 	id            string // stable hub identity (set by the SSH server); never changes
-	yourName      string // display name
+	displayName   string // what others see; chosen by the person
 	lastSubmitted string // what they last sent, offered back when the host asks for a revision
 	flaggedSelf   bool   // the host currently has this participant flagged
 	status        hub.ParticipantStatus
@@ -45,7 +45,7 @@ type ParticipantModel struct {
 	client *session.Client
 }
 
-func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *ParticipantModel {
+func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantModel {
 	namePrompt := textinput.New()
 	namePrompt.Placeholder = "Enter display name"
 	namePrompt.Focus()
@@ -57,9 +57,9 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 		hub:              hubChans,
 		activePane:       paneTranscript,
 		round:            1,
-		id:               yourName,
+		id:               id,
 		status:           hub.StatusIdle,
-		yourName:         yourName,
+		displayName:      id,
 		transcript:       transcript.New(),
 		sidebar:          sidebar.New(),
 		response:         response.New(),
@@ -69,21 +69,21 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 	}
 
 	// Pick up text a previous session left unsent.
-	if draft := hubChans.GetDraft(yourName); draft != "" {
+	if draft := hubChans.GetDraft(id); draft != "" {
 		m.response.SetDraft(draft)
 	}
 
-	m.sidebar.SetYourName(yourName)
+	m.sidebar.SetDisplayName(id)
 	m.sidebar.SetParticipants([]hub.Participant{
-		{Name: m.id, DisplayName: yourName, Status: hub.StatusIdle, Round: 0},
+		{ID: m.id, DisplayName: id, Status: hub.StatusIdle, Round: 0},
 	})
 
 	// Check if we have a stored display name
 	if displayName := hubChans.GetDisplayName(m.id); displayName != "" {
-		m.yourName = displayName
-		m.sidebar.SetYourName(displayName)
+		m.displayName = displayName
+		m.sidebar.SetDisplayName(displayName)
 		m.sidebar.SetParticipants([]hub.Participant{
-			{Name: m.id, DisplayName: displayName, Status: hub.StatusIdle, Round: 0},
+			{ID: m.id, DisplayName: displayName, Status: hub.StatusIdle, Round: 0},
 		})
 	} else {
 		// First time - activate name prompt
@@ -162,7 +162,7 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 		m.transcript.AddMessage(ev.Message)
 	case session.ParticipantEvent:
 		if ev.Participant.Status == hub.StatusDisconnected {
-			m.sidebar.RemoveParticipant(ev.Participant.Name)
+			m.sidebar.RemoveParticipant(ev.Participant.ID)
 		} else {
 			m.sidebar.UpdateParticipant(*ev.Participant)
 		}
@@ -246,14 +246,14 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if keyStr == "enter" {
 			name := strings.TrimSpace(m.namePrompt.Value())
 			if name != "" {
-				m.yourName = name
+				m.displayName = name
 				m.hub.SetDisplayName(m.id, name)
 				m.namePromptActive = false
 				m.activePane = paneTranscript
 				m.namePrompt.Blur()
-				m.sidebar.SetYourName(name)
+				m.sidebar.SetDisplayName(name)
 				m.sidebar.SetParticipants([]hub.Participant{
-					{Name: m.id, DisplayName: name, Status: hub.StatusIdle, Round: 0},
+					{ID: m.id, DisplayName: name, Status: hub.StatusIdle, Round: 0},
 				})
 				// Send participant update to hub so host panel shows this participant
 				p := hub.NewParticipantEvent(m.id, name, hub.StatusIdle, m.round, hub.ParticipantEventConnect)
@@ -296,7 +296,7 @@ func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	msg := hub.NewMessage(hub.MessageTypeResponse, m.yourName, content, m.round)
+	msg := hub.NewMessage(hub.MessageTypeResponse, m.displayName, content, m.round)
 	msg.FromID = m.id
 	m.lastSubmitted = content
 	m.hub.Send(context.Background(), msg)
@@ -383,9 +383,9 @@ func (m *ParticipantModel) Close() {
 	m.client.Close()
 }
 
-func (m *ParticipantModel) SetYourName(name string) {
-	m.yourName = name
-	m.sidebar.SetYourName(name)
+func (m *ParticipantModel) SetDisplayName(name string) {
+	m.displayName = name
+	m.sidebar.SetDisplayName(name)
 }
 
 // applyFlags handles the coordinator's announcement of who the host has asked

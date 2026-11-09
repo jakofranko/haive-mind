@@ -115,7 +115,7 @@ func (m Model) View() string {
 	for i, p := range m.participants {
 		statusStyle := m.styles.statusStyles[p.Status]
 		status := statusStyle.Render(string(p.Status))
-		if m.flagged[p.Name] {
+		if m.flagged[p.ID] {
 			status = m.styles.revise.Render("revise")
 		}
 		marker := "  "
@@ -125,11 +125,11 @@ func (m Model) View() string {
 
 		displayName := p.DisplayName
 		if displayName == "" {
-			displayName = p.Name
+			displayName = p.ID
 		}
 
 		prefix := ""
-		if p.Name == hub.HostID {
+		if p.ID == hub.HostID {
 			prefix = "👑 "
 		}
 		items = append(items, m.styles.participant.Render(fmt.Sprintf("%s%s%s  %s", marker, prefix, displayName, status)))
@@ -154,7 +154,7 @@ func (m *Model) SetParticipants(participants []hub.Participant) {
 
 func (m *Model) UpdateParticipant(updated hub.Participant) {
 	for i, p := range m.participants {
-		if p.Name == updated.Name {
+		if p.ID == updated.ID {
 			m.participants[i] = updated
 			return
 		}
@@ -163,9 +163,9 @@ func (m *Model) UpdateParticipant(updated hub.Participant) {
 	m.participants = append(m.participants, updated)
 }
 
-func (m *Model) RemoveParticipant(name string) {
+func (m *Model) RemoveParticipant(id string) {
 	for i, p := range m.participants {
-		if p.Name == name {
+		if p.ID == id {
 			m.participants = append(m.participants[:i], m.participants[i+1:]...)
 			break
 		}

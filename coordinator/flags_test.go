@@ -320,7 +320,7 @@ func TestRoundState_ConnectDoesNotResetStatuses(t *testing.T) {
 	eventually(t, "round state for bob", func() bool { return u.count() > before })
 	time.Sleep(300 * time.Millisecond) // negative check: waiting to confirm nothing else happens
 	for _, p := range h.GetParticipants() {
-		if p.Name == "Agent-alice" && p.Status != hub.StatusSubmitted {
+		if p.ID == "Agent-alice" && p.Status != hub.StatusSubmitted {
 			t.Errorf("alice's status = %q after bob connected, want submitted", p.Status)
 		}
 	}

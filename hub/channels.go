@@ -20,12 +20,12 @@ type Hub interface {
 	StartRound(round int) error
 	Export(path string) error
 	RegisterParticipant(p *Participant) error
-	UpdateParticipantStatus(name string, status ParticipantStatus) error
-	UnregisterParticipant(name string) error
+	UpdateParticipantStatus(id string, status ParticipantStatus) error
+	UnregisterParticipant(id string) error
 	GetDisplayName(id string) string
 	SetDisplayName(id, displayName string)
-	SetDraft(name, text string)
-	GetDraft(name string) string
+	SetDraft(id, text string)
+	GetDraft(id string) string
 	SetAgentRunner(runner agent.Runner)
 	SetSynthesizer(runner agent.Runner)
 	Start() error

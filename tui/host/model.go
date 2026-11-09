@@ -29,12 +29,12 @@ const (
 
 // AppModel is the main TUI model that composes child pane models
 type AppModel struct {
-	hub        hub.Hub
-	width      int
-	height     int
-	activePane int
-	round      int
-	yourName   string
+	hub         hub.Hub
+	width       int
+	height      int
+	activePane  int
+	round       int
+	displayName string
 
 	// Child models
 	transcript   transcript.Model
@@ -67,7 +67,7 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 		hub:              hubChans,
 		activePane:       paneTranscript,
 		round:            1,
-		yourName:         "Host",
+		displayName:      "Host",
 		transcript:       transcript.New(),
 		participants:     participants.New(),
 		directive:        directive.New(),
@@ -81,7 +81,7 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 
 	// Check if we have a stored display name
 	if displayName := hubChans.GetDisplayName(hub.HostID); displayName != "" {
-		m.yourName = displayName
+		m.displayName = displayName
 	} else {
 		// First time - activate name prompt
 		m.activePane = paneNamePrompt
@@ -196,7 +196,7 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 		}
 	case session.ParticipantEvent:
 		if ev.Participant.Status == hub.StatusDisconnected {
-			m.participants.RemoveParticipant(ev.Participant.Name)
+			m.participants.RemoveParticipant(ev.Participant.ID)
 		} else {
 			m.participants.UpdateParticipant(*ev.Participant)
 		}
@@ -310,7 +310,7 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if keyStr == "enter" {
 			name := strings.TrimSpace(m.namePrompt.Value())
 			if name != "" {
-				m.yourName = name
+				m.displayName = name
 				m.hub.SetDisplayName(hub.HostID, name)
 				m.namePromptActive = false
 				m.activePane = paneTranscript
@@ -409,7 +409,7 @@ func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 		msgType = hub.MessageTypeAggregate
 		m.draftingAggregate = false
 	}
-	msg := hub.NewMessage(msgType, m.yourName, content, m.round)
+	msg := hub.NewMessage(msgType, m.displayName, content, m.round)
 	m.hub.Send(context.Background(), msg)
 
 	m.directive.Reset()
@@ -526,14 +526,14 @@ func (m *AppModel) showAgentError(failed hub.Message) tea.Cmd {
 // participant. The host cannot flag themselves.
 func (m *AppModel) toggleFlag() (tea.Model, tea.Cmd) {
 	p, ok := m.participants.Selected()
-	if !ok || p.Name == hub.HostID {
+	if !ok || p.ID == hub.HostID {
 		return m, nil
 	}
 	var msg *hub.Message
-	if m.participants.IsFlagged(p.Name) {
-		msg = hub.NewUnflag(m.round, p.Name)
+	if m.participants.IsFlagged(p.ID) {
+		msg = hub.NewUnflag(m.round, p.ID)
 	} else {
-		msg = hub.NewFlag(m.round, p.Name)
+		msg = hub.NewFlag(m.round, p.ID)
 	}
 	m.hub.Send(context.Background(), msg)
 	return m, nil

@@ -17,9 +17,9 @@ func TestParticipantModel_Init(t *testing.T) {
 	assert.NotNil(t, model)
 	assert.Equal(t, paneTranscript, model.activePane)
 	assert.Equal(t, 1, model.round)
-	assert.Equal(t, "Agent-1", model.yourName)
+	assert.Equal(t, "Agent-1", model.displayName)
 	assert.Len(t, model.sidebar.GetParticipants(), 1)
-	assert.Equal(t, "Agent-1", model.sidebar.GetParticipants()[0].Name)
+	assert.Equal(t, "Agent-1", model.sidebar.GetParticipants()[0].ID)
 }
 
 func TestParticipantModel_Init_NamePrompt(t *testing.T) {
@@ -144,17 +144,17 @@ func TestParticipantModel_UpdateParticipant(t *testing.T) {
 
 	// Add Agent-2 to participants first
 	model.sidebar.SetParticipants([]hub.Participant{
-		{Name: "Agent-1", Status: hub.StatusIdle, Round: 0},
-		{Name: "Agent-2", Status: hub.StatusIdle, Round: 0},
+		{ID: "Agent-1", Status: hub.StatusIdle, Round: 0},
+		{ID: "Agent-2", Status: hub.StatusIdle, Round: 0},
 	})
 
-	updated := hub.Participant{Name: "Agent-2", Status: hub.StatusTyping, Round: 1}
+	updated := hub.Participant{ID: "Agent-2", Status: hub.StatusTyping, Round: 1}
 	model.sidebar.UpdateParticipant(updated)
 
 	participants := model.sidebar.GetParticipants()
 	found := false
 	for _, p := range participants {
-		if p.Name == "Agent-2" {
+		if p.ID == "Agent-2" {
 			assert.Equal(t, hub.StatusTyping, p.Status)
 			assert.Equal(t, 1, p.Round)
 			found = true
@@ -196,8 +196,8 @@ func TestParticipantModel_NamePrompt_Flow(t *testing.T) {
 
 	assert.False(t, model.namePromptActive)
 	assert.Equal(t, paneTranscript, model.activePane)
-	assert.Equal(t, "John Doe", model.yourName)
-	assert.Equal(t, "Agent-1", model.sidebar.GetParticipants()[0].Name)
+	assert.Equal(t, "John Doe", model.displayName)
+	assert.Equal(t, "Agent-1", model.sidebar.GetParticipants()[0].ID)
 	assert.Equal(t, "John Doe", model.sidebar.GetParticipants()[0].DisplayName)
 	assert.Equal(t, "John Doe", hubChans.GetDisplayName("Agent-1"))
 }

@@ -31,8 +31,8 @@ func TestParticipant_ChoosingDisplayName_DoesNotCreateSecondHubEntry(t *testing.
 	if len(ps) != 1 {
 		t.Fatalf("hub has %d entries for one person: %+v", len(ps), ps)
 	}
-	if ps[0].Name != "Agent-alice" || ps[0].DisplayName != "Alice" {
-		t.Errorf("entry = {Name:%q DisplayName:%q}, want {Agent-alice, Alice}", ps[0].Name, ps[0].DisplayName)
+	if ps[0].ID != "Agent-alice" || ps[0].DisplayName != "Alice" {
+		t.Errorf("entry = {ID:%q DisplayName:%q}, want {Agent-alice, Alice}", ps[0].ID, ps[0].DisplayName)
 	}
 
 	// What the SSH server does when the session ends.
@@ -50,7 +50,7 @@ func TestParticipant_SidebarRowMatchesHubIdentity(t *testing.T) {
 	m = enterName(t, m, "Alice")
 
 	row := m.sidebar.GetParticipants()
-	if len(row) != 1 || row[0].Name != "Agent-alice" || row[0].DisplayName != "Alice" {
+	if len(row) != 1 || row[0].ID != "Agent-alice" || row[0].DisplayName != "Alice" {
 		t.Errorf("sidebar = %+v, want one row {Agent-alice, Alice}", row)
 	}
 }
@@ -83,7 +83,7 @@ func TestParticipant_OtherDisconnecting_RemovesThemFromSidebar(t *testing.T) {
 	pump("disconnect")
 
 	for _, p := range m.sidebar.GetParticipants() {
-		if p.Name == "Agent-alice" {
+		if p.ID == "Agent-alice" {
 			t.Errorf("Alice is still in the sidebar after disconnecting: %+v", p)
 		}
 	}

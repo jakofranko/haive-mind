@@ -20,7 +20,7 @@ func TestAppModel_Init(t *testing.T) {
 	assert.NotNil(t, model)
 	assert.Equal(t, paneTranscript, model.activePane)
 	assert.Equal(t, 1, model.round)
-	assert.Equal(t, "TestHost", model.yourName)
+	assert.Equal(t, "TestHost", model.displayName)
 	assert.Len(t, model.participants.GetParticipants(), 0)
 }
 
@@ -148,18 +148,18 @@ func TestAppModel_UpdateParticipant_Upsert(t *testing.T) {
 	model := NewAppModel(hubChans)
 
 	// Add new participant (join)
-	updated := hub.Participant{Name: "Agent-new", DisplayName: "New Agent", Status: hub.StatusTyping, Round: 1}
+	updated := hub.Participant{ID: "Agent-new", DisplayName: "New Agent", Status: hub.StatusTyping, Round: 1}
 	model.participants.UpdateParticipant(updated)
 
 	participants := model.participants.GetParticipants()
 	assert.Len(t, participants, 1)
-	assert.Equal(t, "Agent-new", participants[0].Name)
+	assert.Equal(t, "Agent-new", participants[0].ID)
 	assert.Equal(t, "New Agent", participants[0].DisplayName)
 	assert.Equal(t, hub.StatusTyping, participants[0].Status)
 	assert.Equal(t, 1, participants[0].Round)
 
 	// Update existing participant
-	updated = hub.Participant{Name: "Agent-new", DisplayName: "New Agent", Status: hub.StatusReady, Round: 1}
+	updated = hub.Participant{ID: "Agent-new", DisplayName: "New Agent", Status: hub.StatusReady, Round: 1}
 	model.participants.UpdateParticipant(updated)
 
 	participants = model.participants.GetParticipants()
@@ -173,15 +173,15 @@ func TestAppModel_RemoveParticipant(t *testing.T) {
 	model := NewAppModel(hubChans)
 
 	// Add participants
-	model.participants.UpdateParticipant(hub.Participant{Name: "Agent-1", DisplayName: "Agent One", Status: hub.StatusIdle, Round: 0})
-	model.participants.UpdateParticipant(hub.Participant{Name: "Agent-2", DisplayName: "Agent Two", Status: hub.StatusIdle, Round: 0})
+	model.participants.UpdateParticipant(hub.Participant{ID: "Agent-1", DisplayName: "Agent One", Status: hub.StatusIdle, Round: 0})
+	model.participants.UpdateParticipant(hub.Participant{ID: "Agent-2", DisplayName: "Agent Two", Status: hub.StatusIdle, Round: 0})
 	assert.Len(t, model.participants.GetParticipants(), 2)
 
 	// Remove one
 	model.participants.RemoveParticipant("Agent-1")
 	participants := model.participants.GetParticipants()
 	assert.Len(t, participants, 1)
-	assert.Equal(t, "Agent-2", participants[0].Name)
+	assert.Equal(t, "Agent-2", participants[0].ID)
 
 	// Remove non-existent (should not panic)
 	model.participants.RemoveParticipant("NonExistent")
@@ -240,7 +240,7 @@ func TestAppModel_NamePrompt_Flow(t *testing.T) {
 
 	assert.False(t, model.namePromptActive)
 	assert.Equal(t, paneTranscript, model.activePane)
-	assert.Equal(t, "John Doe", model.yourName)
+	assert.Equal(t, "John Doe", model.displayName)
 	assert.Equal(t, "John Doe", hubChans.GetDisplayName(hub.HostID))
 }
 

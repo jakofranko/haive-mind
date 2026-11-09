@@ -8,13 +8,13 @@ import (
 func names(h *hubImpl) []string {
 	var out []string
 	for _, p := range h.GetParticipants() {
-		out = append(out, p.Name)
+		out = append(out, p.ID)
 	}
 	return out
 }
 
-func join(h *hubImpl, name string) {
-	h.RegisterParticipant(NewParticipantEvent(name, name, StatusIdle, 1, ParticipantEventConnect))
+func join(h *hubImpl, id string) {
+	h.RegisterParticipant(NewParticipantEvent(id, id, StatusIdle, 1, ParticipantEventConnect))
 }
 
 // #31: participants come back in the order they joined, every time.

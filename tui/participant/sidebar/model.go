@@ -17,7 +17,7 @@ type Model struct {
 	active       bool
 	round        int
 	flagged      map[string]bool // ids the host asked to revise
-	yourName     string
+	displayName  string
 }
 
 type Styles struct {
@@ -93,7 +93,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) updateParticipant(updated hub.Participant) {
 	for i, p := range m.participants {
-		if p.Name == updated.Name {
+		if p.ID == updated.ID {
 			m.participants[i] = updated
 			break
 		}
@@ -112,17 +112,17 @@ func (m Model) View() string {
 	for _, p := range m.participants {
 		statusStyle := m.styles.statusStyles[p.Status]
 		status := statusStyle.Render(string(p.Status))
-		if m.flagged[p.Name] {
+		if m.flagged[p.ID] {
 			status = lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true).Render("revise")
 		}
 
 		displayName := p.DisplayName
 		if displayName == "" {
-			displayName = p.Name
+			displayName = p.ID
 		}
 
 		participantStyle := m.styles.participant
-		if displayName == m.yourName {
+		if displayName == m.displayName {
 			participantStyle = m.styles.yourSelf
 		}
 
@@ -148,7 +148,7 @@ func (m *Model) SetParticipants(participants []hub.Participant) {
 
 func (m *Model) UpdateParticipant(updated hub.Participant) {
 	for i, p := range m.participants {
-		if p.Name == updated.Name {
+		if p.ID == updated.ID {
 			m.participants[i] = updated
 			return
 		}
@@ -158,9 +158,9 @@ func (m *Model) UpdateParticipant(updated hub.Participant) {
 }
 
 // RemoveParticipant drops a participant who has disconnected.
-func (m *Model) RemoveParticipant(name string) {
+func (m *Model) RemoveParticipant(id string) {
 	for i, p := range m.participants {
-		if p.Name == name {
+		if p.ID == id {
 			m.participants = append(m.participants[:i], m.participants[i+1:]...)
 			return
 		}
@@ -171,8 +171,8 @@ func (m *Model) SetRound(round int) {
 	m.round = round
 }
 
-func (m *Model) SetYourName(name string) {
-	m.yourName = name
+func (m *Model) SetDisplayName(name string) {
+	m.displayName = name
 }
 
 func (m *Model) GetParticipants() []hub.Participant {

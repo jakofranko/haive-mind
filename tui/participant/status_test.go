@@ -20,7 +20,7 @@ func statusRig(t *testing.T) (*ParticipantModel, func() hub.ParticipantStatus) {
 	m.updateActiveStates()
 	return m, func() hub.ParticipantStatus {
 		for _, p := range h.GetParticipants() {
-			if p.Name == "Agent-alice" {
+			if p.ID == "Agent-alice" {
 				return p.Status
 			}
 		}

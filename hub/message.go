@@ -108,7 +108,7 @@ func (m *Message) ToJSON() ([]byte, error) {
 }
 
 type Participant struct {
-	Name        string            `json:"name"`
+	ID          string            `json:"id"`
 	DisplayName string            `json:"display_name"`
 	Status      ParticipantStatus `json:"status"`
 	Round       int               `json:"round"`
@@ -121,9 +121,9 @@ const (
 	ParticipantEventStatusChange = "status_change"
 )
 
-func NewParticipantEvent(name, displayName string, status ParticipantStatus, round int, event string) *Participant {
+func NewParticipantEvent(id, displayName string, status ParticipantStatus, round int, event string) *Participant {
 	return &Participant{
-		Name:        name,
+		ID:          id,
 		DisplayName: displayName,
 		Status:      status,
 		Round:       round,

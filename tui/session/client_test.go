@@ -106,20 +106,20 @@ func TestParticipantEventsAreDecoded(t *testing.T) {
 
 	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
 	connect := next(t, c).(session.ParticipantEvent).Participant
-	if connect.Name != "Agent-alice" || connect.DisplayName != "Alice" || connect.Event != hub.ParticipantEventConnect {
+	if connect.ID != "Agent-alice" || connect.DisplayName != "Alice" || connect.Event != hub.ParticipantEventConnect {
 		t.Errorf("connect = %+v", connect)
 	}
 
 	h.UpdateParticipantStatus("Agent-alice", hub.StatusTyping)
 	change := next(t, c).(session.ParticipantEvent).Participant
-	if change.Name != "Agent-alice" || change.Status != hub.StatusTyping {
+	if change.ID != "Agent-alice" || change.Status != hub.StatusTyping {
 		t.Errorf("status change = %+v", change)
 	}
 
 	// The hub forgets a participant on disconnect, so this cannot be a lookup.
 	h.UnregisterParticipant("Agent-alice")
 	gone := next(t, c).(session.ParticipantEvent).Participant
-	if gone.Name != "Agent-alice" || gone.Status != hub.StatusDisconnected || gone.Event != hub.ParticipantEventDisconnect {
+	if gone.ID != "Agent-alice" || gone.Status != hub.StatusDisconnected || gone.Event != hub.ParticipantEventDisconnect {
 		t.Errorf("disconnect = %+v", gone)
 	}
 }
