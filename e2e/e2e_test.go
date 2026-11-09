@@ -491,6 +491,73 @@ func TestHostAsksForARevision(t *testing.T) {
 	}
 }
 
+// #53: a participant who joins after a new round started sees that round, not
+// round 1.
+func TestLateJoinerSeesCurrentRound(t *testing.T) {
+	addr, _, _ := startServer(t)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+
+	// Tab: transcript -> participants -> input -> buttons; [New Round] is the
+	// third button.
+	host.send(t, "\t\t\t")
+	host.send(t, "l")
+	host.send(t, "l")
+	host.send(t, "\r")
+	host.waitFor(t, "Participants (Round 2")
+
+	alice := connect(t, addr, "alice")
+	alice.joinAs(t, "Alice")
+	alice.waitFor(t, "Participants (Round 2")
+}
+
+// startNewRound has the host press [New Round] and waits for round 2.
+func startNewRound(t *testing.T, host *term) {
+	t.Helper()
+	// Tab: transcript -> participants -> input -> buttons; [New Round] is the
+	// third button.
+	host.send(t, "\t\t\t")
+	host.send(t, "l")
+	host.send(t, "l")
+	host.send(t, "\r")
+	host.waitFor(t, "Participants (Round 2")
+}
+
+// #53: the host reconnecting after a new round started sees that round.
+func TestReconnectedHostSeesCurrentRound(t *testing.T) {
+	addr, _, _ := startServer(t)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+	startNewRound(t, host)
+
+	host.disconnect()
+	time.Sleep(300 * time.Millisecond) // let the server notice
+
+	back := connect(t, addr, "host") // same SSH user: no name prompt this time
+	back.waitFor(t, "Participants (Round 2")
+}
+
+// #53: a participant with a stored display name reconnects (no name prompt, so
+// the TUI does not register again) after a new round and sees that round.
+func TestReconnectedParticipantSeesCurrentRound(t *testing.T) {
+	addr, _, _ := startServer(t)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+	alice := connect(t, addr, "alice")
+	alice.joinAs(t, "Alice")
+
+	alice.disconnect()
+	time.Sleep(300 * time.Millisecond) // let the server notice
+
+	startNewRound(t, host)
+
+	back := connect(t, addr, "alice") // same SSH user: no name prompt this time
+	back.waitFor(t, "Participants (Round 2")
+}
+
 // servers maps a server's address to its process, so a test can signal it.
 var servers sync.Map
 

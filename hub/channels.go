@@ -15,6 +15,8 @@ type Hub interface {
 	// SubscribeTypes delivers several message types to one handler in send order.
 	SubscribeTypes(ctx context.Context, msgTypes []MessageType, handler func(*Message) error) (Subscription, error)
 	RequestAggregate(round int) error
+	// StartRound asks to end the given round and start the next. The round is
+	// the one being ended; the Coordinator ignores it unless it is current.
 	StartRound(round int) error
 	Export(path string) error
 	RegisterParticipant(p *Participant) error

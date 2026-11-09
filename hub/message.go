@@ -37,7 +37,7 @@ const (
 	MessageTypeFlag             MessageType = "flag"
 	MessageTypeUnflag           MessageType = "unflag"
 	MessageTypeResolve          MessageType = "resolve"
-	MessageTypeFlagUpdate       MessageType = "flag_update"
+	MessageTypeRoundState       MessageType = "round_state"
 )
 
 type Message struct {
@@ -84,22 +84,23 @@ func NewResolve(round int) *Message {
 	return NewMessage(MessageTypeResolve, "host", "", round)
 }
 
-// NewFlagUpdate publishes the current set of flagged Participant ids.
-func NewFlagUpdate(round int, ids []string) *Message {
+// NewRoundState publishes the current round and the flagged Participant ids.
+func NewRoundState(round int, ids []string) *Message {
 	if ids == nil {
 		ids = []string{}
 	}
 	payload, _ := json.Marshal(ids)
-	return NewMessage(MessageTypeFlagUpdate, "hub", string(payload), round)
+	return NewMessage(MessageTypeRoundState, "hub", string(payload), round)
 }
 
-// FlaggedIDs returns the flagged Participant ids carried by a Flag update.
-func (m Message) FlaggedIDs() ([]string, error) {
-	var ids []string
+// RoundState returns the whole concept a Round state message carries: the
+// round and the flagged Participant ids. Read both from here rather than
+// reaching into the message's Round field separately.
+func (m Message) RoundState() (round int, ids []string, err error) {
 	if err := json.Unmarshal([]byte(m.Content), &ids); err != nil {
-		return nil, err
+		return 0, nil, err
 	}
-	return ids, nil
+	return m.Round, ids, nil
 }
 
 func (m *Message) ToJSON() ([]byte, error) {

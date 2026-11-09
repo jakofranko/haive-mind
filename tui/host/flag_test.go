@@ -26,7 +26,7 @@ func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 }
 
 func flaggedUpdate(ids ...string) eventMsg {
-	return eventMsg{session.FlagEvent{IDs: ids}}
+	return eventMsg{session.RoundStateEvent{Round: 1, IDs: ids}}
 }
 
 func runAll(m *AppModel, cmd tea.Cmd) *AppModel { return run(m, cmd) }
@@ -75,8 +75,8 @@ func TestHost_FlaggedParticipantShowsRevise(t *testing.T) {
 	assert.NotContains(t, visible(m.View()), "revise")
 }
 
-// The flag update is not transcript content.
-func TestHost_FlagUpdateIsNotShownInTheTranscript(t *testing.T) {
+// The round state is not transcript content.
+func TestHost_RoundStateIsNotShownInTheTranscript(t *testing.T) {
 	m, _ := hostWithAlice(t)
 	updated, _ := m.Update(flaggedUpdate("Agent-alice"))
 	m = updated.(*AppModel)
@@ -166,4 +166,16 @@ func TestHost_CursorStaysOnARowWhenTheSelectedParticipantLeaves(t *testing.T) {
 	if assert.Len(t, got, 1, "c should land on the last remaining participant") {
 		assert.Equal(t, "Agent-alice", got[0].To)
 	}
+}
+
+// A Round state sets the host's round and the markers; the host sends nothing.
+func TestHost_RoundStateSetsRoundAndFlaggedMarkers(t *testing.T) {
+	m, sent := hostWithAlice(t)
+	updated, _ := m.Update(eventMsg{session.RoundStateEvent{Round: 3, IDs: []string{"Agent-alice"}}})
+	m = updated.(*AppModel)
+
+	assert.Equal(t, 3, m.round)
+	assert.Contains(t, visible(m.View()), "Participants (Round 3")
+	assert.Contains(t, visible(m.View()), "revise")
+	assert.Empty(t, sent())
 }

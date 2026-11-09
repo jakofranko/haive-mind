@@ -134,14 +134,38 @@ func TestRoundChangeIsDelivered(t *testing.T) {
 	}
 }
 
-func TestFlagUpdateDeliversFlaggedIDs(t *testing.T) {
+func TestRoundStateDeliversRoundAndFlaggedIDs(t *testing.T) {
 	h := startedHub(t)
 	c := newClient(t, h)
 
-	h.Send(context.Background(), hub.NewFlagUpdate(1, []string{"Agent-a", "Agent-b"}))
-	got := next(t, c).(session.FlagEvent).IDs
-	if want := []string{"Agent-a", "Agent-b"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("flagged = %v, want %v", got, want)
+	h.Send(context.Background(), hub.NewRoundState(4, []string{"Agent-a", "Agent-b"}))
+	got := next(t, c).(session.RoundStateEvent)
+	if got.Round != 4 {
+		t.Errorf("round = %d, want 4", got.Round)
+	}
+	if want := []string{"Agent-a", "Agent-b"}; !reflect.DeepEqual(got.IDs, want) {
+		t.Errorf("flagged = %v, want %v", got.IDs, want)
+	}
+}
+
+// A Round state arrives as one event, in send order with the others.
+func TestRoundStateKeepsSendOrderWithOtherEvents(t *testing.T) {
+	h := startedHub(t)
+	c := newClient(t, h)
+	ctx := context.Background()
+
+	h.Send(ctx, hub.NewMessage(hub.MessageTypeSystem, "hub", "before", 1))
+	h.Send(ctx, hub.NewRoundState(2, nil))
+	h.Send(ctx, hub.NewMessage(hub.MessageTypeRoundChange, "hub", "", 2))
+
+	if _, ok := next(t, c).(session.MessageEvent); !ok {
+		t.Error("first event is not the message")
+	}
+	if ev, ok := next(t, c).(session.RoundStateEvent); !ok || ev.Round != 2 || len(ev.IDs) != 0 {
+		t.Errorf("second event = %+v, want a RoundStateEvent for round 2 with no ids", ev)
+	}
+	if _, ok := next(t, c).(session.RoundEvent); !ok {
+		t.Error("third event is not the round change")
 	}
 }
 

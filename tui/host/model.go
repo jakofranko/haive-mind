@@ -205,7 +205,9 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 	case session.RoundEvent:
 		m.round = ev.Round
 		m.participants.SetRound(m.round)
-	case session.FlagEvent:
+	case session.RoundStateEvent:
+		m.round = ev.Round
+		m.participants.SetRound(m.round)
 		m.participants.SetFlagged(ev.IDs)
 	case session.ExportEvent:
 		m.transcript.AddSystemMessage("Exported to " + ev.Path)
@@ -435,8 +437,9 @@ func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 	case "[Send]":
 		return m.handleDirectiveSend()
 	case "[New Round]":
-		// The coordinator owns the round number; we adopt it on RoundChange.
-		m.hub.StartRound(m.round + 1)
+		// Name the round being ended. The coordinator owns the next number and
+		// ignores a repeat; we adopt the new round on RoundChange.
+		m.hub.StartRound(m.round)
 	case "[Resolve]":
 		m.hub.Send(context.Background(), hub.NewResolve(m.round))
 	case "[Export]":

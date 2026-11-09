@@ -1,10 +1,13 @@
 package host
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
+	"jakofranko/haive-mind/coordinator"
 	"jakofranko/haive-mind/hub"
 	"jakofranko/haive-mind/tui/session"
 )
@@ -258,4 +261,34 @@ func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
 	updatedModel, _ = model.Update(eventMsg{session.RoundEvent{Round: 2}})
 	model = updatedModel.(*AppModel)
 	assert.Equal(t, 2, model.round)
+}
+
+// Pressing New Round twice before the announcement arrives starts one round:
+// both presses name the round the host shows.
+func TestAppModel_NewRound_DoublePressAdvancesOnce(t *testing.T) {
+	hubChans := hub.NewHub()
+	hubChans.SetDisplayName("host", "TestHost")
+	coord := coordinator.New(hubChans)
+	assert.NoError(t, coord.Start(context.Background()))
+	assert.NoError(t, hubChans.Start())
+	defer hubChans.Stop()
+
+	model := NewAppModel(hubChans)
+	model.activePane = paneButtons
+	model.buttons.SetButtonIndex(2) // New Round
+
+	var m tea.Model = model
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	assert.Eventually(t, func() bool { return coord.Round() == 2 }, 2*time.Second, 5*time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // negative check: waiting to confirm nothing else happens
+	assert.Equal(t, 2, coord.Round())
+	rc := 0
+	for _, msg := range coord.Transcript() {
+		if msg.Type == hub.MessageTypeRoundChange {
+			rc++
+		}
+	}
+	assert.Equal(t, 1, rc)
 }
