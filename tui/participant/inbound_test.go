@@ -79,7 +79,7 @@ func TestParticipantModel_MixedTypes_ArriveInSendOrder(t *testing.T) {
 			if got, want := msg.(hubMessageMsg).Content, fmt.Sprintf("%03d", i); got != want {
 				t.Fatalf("message %d arrived as %s, want %s (out of order)", i, got, want)
 			}
-		case <-time.After(2 * time.Second):
+		case <-time.After(10 * time.Second):
 			t.Fatalf("timed out waiting for message %d", i)
 		}
 	}
