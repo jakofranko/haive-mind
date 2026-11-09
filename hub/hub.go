@@ -204,6 +204,11 @@ func (h *hubImpl) RegisterParticipant(p *Participant) error {
 		h.joinSeq++
 		h.joined[p.ID] = h.joinSeq
 	}
+	if p.Event == "" {
+		registered := *p // leave the caller's value alone
+		registered.Event = ParticipantEventConnect
+		p = &registered
+	}
 	h.participants[p.ID] = p
 
 	h.broadcastLocked(MessageTypeParticipantEvent, p)

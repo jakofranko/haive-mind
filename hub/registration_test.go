@@ -19,6 +19,23 @@ func TestRegisterParticipant_HonoursTheGivenEventKind(t *testing.T) {
 	}
 }
 
+// A registration that names no event kind is announced as a connect, not as an
+// event with empty content.
+func TestRegisterParticipant_DefaultsAnEmptyEventKindToConnect(t *testing.T) {
+	h := NewHub()
+	events := collect(t, h, MessageTypeParticipantEvent)
+	if err := h.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer h.Stop()
+
+	h.RegisterParticipant(NewParticipantEvent("Agent-alice", "Alice", StatusIdle, ""))
+
+	if ev := next(t, events); ev.Content != ParticipantEventConnect {
+		t.Errorf("event content = %q, want %q", ev.Content, ParticipantEventConnect)
+	}
+}
+
 // Renaming a registered participant updates it and announces a status change.
 func TestSetDisplayName_RenamesARegisteredParticipantAndAnnouncesIt(t *testing.T) {
 	h := NewHub()
