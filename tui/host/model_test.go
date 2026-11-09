@@ -132,7 +132,7 @@ func TestAppModel_AddMessage(t *testing.T) {
 	msg := hub.NewMessage(hub.MessageTypeResponse, "Agent-1", "Test response", 1)
 	model.transcript.AddMessage(*msg)
 
-	content := model.transcript.View()
+	content := visible(model.transcript.View())
 	assert.Contains(t, content, "Agent-1")
 	assert.Contains(t, content, "Test response")
 	assert.Contains(t, content, "Round 1")

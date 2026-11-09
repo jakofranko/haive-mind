@@ -113,7 +113,7 @@ func TestParticipantModel_AddMessage(t *testing.T) {
 	msg := hub.NewMessage(hub.MessageTypeDirective, "host", "Test directive", 1)
 	model.transcript.AddMessage(*msg)
 
-	content := model.transcript.View()
+	content := visible(model.transcript.View())
 	assert.Contains(t, content, "host")
 	assert.Contains(t, content, "Test directive")
 	assert.Contains(t, content, "Round 1")
@@ -130,7 +130,7 @@ func TestParticipantModel_Update_DirectiveMessage(t *testing.T) {
 	updatedModel, _ := model.Update(hubMessageMsg(*msg))
 	model = updatedModel.(*ParticipantModel)
 
-	content := model.transcript.View()
+	content := visible(model.transcript.View())
 	assert.Contains(t, content, "host")
 	assert.Contains(t, content, "Test directive")
 	assert.Contains(t, content, "Round 1")

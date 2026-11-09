@@ -44,7 +44,7 @@ func defaultStyles() Styles {
 
 func New() Model {
 	renderer, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle("dark"), // fixed: auto-detection would read the server's terminal, not the SSH user's
 		glamour.WithWordWrap(80),
 	)
 	if err != nil {
@@ -104,7 +104,7 @@ func (m *Model) layout() {
 }
 
 func (m *Model) addMessage(msg hub.Message) {
-	rendered, _ := m.renderer.Render(msg.Content)
+	rendered := m.renderMarkdown(msg.Content)
 	content := fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
 		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
 
@@ -140,7 +140,7 @@ func (m *Model) SetSize(width, height int) {
 }
 
 func (m *Model) AddMessage(msg hub.Message) {
-	rendered, _ := m.renderer.Render(msg.Content)
+	rendered := m.renderMarkdown(msg.Content)
 	content := fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
 		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
 
@@ -160,4 +160,17 @@ func (m *Model) GetContent() string {
 func (m *Model) SetContent(content string) {
 	m.content = content
 	m.viewport.SetContent(content)
+}
+
+// renderMarkdown renders text as Markdown, falling back to the raw text if the
+// renderer is unavailable or fails.
+func (m *Model) renderMarkdown(text string) string {
+	if m.renderer == nil {
+		return text
+	}
+	out, err := m.renderer.Render(text)
+	if err != nil {
+		return text
+	}
+	return out
 }

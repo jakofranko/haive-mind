@@ -1,6 +1,7 @@
 package transcript
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -39,3 +40,23 @@ func TestTranscript_FirstMessageStartsOnItsOwnLine(t *testing.T) {
 		}
 	}
 }
+
+// Emphasis in a message is rendered, not shown as raw Markdown markers. This
+// must not depend on whether the server itself is attached to a terminal.
+func TestTranscript_RendersEmphasisInTheBody(t *testing.T) {
+	m := New()
+	m.SetSize(80, 24)
+	m.AddMessage(hub.Message{From: "Alice", Content: "use **Postgres** here", Timestamp: time.Now(), Round: 1})
+
+	view := stripANSI(m.View())
+	if strings.Contains(view, "**") {
+		t.Errorf("bold shown as raw Markdown:\n%s", view)
+	}
+	if !strings.Contains(view, "Postgres") {
+		t.Errorf("body text missing:\n%s", view)
+	}
+}
+
+var ansiEscapes = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+
+func stripANSI(s string) string { return ansiEscapes.ReplaceAllString(s, "") }
