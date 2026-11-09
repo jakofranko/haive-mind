@@ -15,6 +15,7 @@ import (
 // a quiet period, and returns the contents received.
 func drainInbound(m *AppModel) map[string]bool {
 	got := map[string]bool{}
+	wait := 10 * time.Second // generous until the first message; short once they are flowing
 	for {
 		res := make(chan tea.Msg, 1)
 		go func() { res <- m.listenForMessages()() }()
@@ -22,7 +23,8 @@ func drainInbound(m *AppModel) map[string]bool {
 		case msg := <-res:
 			hm := msg.(hubMessageMsg)
 			got[hm.Content] = true
-		case <-time.After(500 * time.Millisecond):
+			wait = 500 * time.Millisecond
+		case <-time.After(wait):
 			return got
 		}
 	}
