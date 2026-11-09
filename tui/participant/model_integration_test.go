@@ -58,7 +58,7 @@ func runProgram(t *testing.T, model *ParticipantModel) *syncBuffer {
 	})
 
 	select {
-	case <-model.SubscriptionsReady():
+	case <-model.client.Ready():
 	case <-time.After(5 * time.Second):
 		t.Fatal("Timeout waiting for subscriptions to be ready")
 	}

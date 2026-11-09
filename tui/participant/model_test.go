@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/session"
 )
 
 func TestParticipantModel_Init(t *testing.T) {
@@ -127,7 +128,7 @@ func TestParticipantModel_Update_DirectiveMessage(t *testing.T) {
 	model.transcript.SetSize(80, 20)
 
 	msg := hub.NewMessage(hub.MessageTypeDirective, "host", "Test directive", 1)
-	updatedModel, _ := model.Update(hubMessageMsg(*msg))
+	updatedModel, _ := model.Update(eventMsg{session.MessageEvent{Message: *msg}})
 	model = updatedModel.(*ParticipantModel)
 
 	content := visible(model.transcript.View())

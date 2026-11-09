@@ -8,21 +8,21 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/session"
 )
 
 // drainInbound pulls hub messages out of the model the way its Update loop
-// does (one listenForMessages command at a time) until nothing arrives for
+// does (the thin wait command, one event at a time) until nothing arrives for
 // a quiet period, and returns the contents received.
 func drainInbound(m *ParticipantModel) map[string]bool {
 	got := map[string]bool{}
 	wait := 10 * time.Second // generous until the first message; short once they are flowing
 	for {
 		res := make(chan tea.Msg, 1)
-		go func() { res <- m.listenForMessages()() }()
+		go func() { res <- m.waitForEvent()() }()
 		select {
 		case msg := <-res:
-			hm := msg.(hubMessageMsg)
-			got[hm.Content] = true
+			got[msg.(eventMsg).Event.(session.MessageEvent).Message.Content] = true
 			wait = 500 * time.Millisecond
 		case <-time.After(wait):
 			return got
@@ -75,10 +75,10 @@ func TestParticipantModel_MixedTypes_ArriveInSendOrder(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		res := make(chan tea.Msg, 1)
-		go func() { res <- m.listenForMessages()() }()
+		go func() { res <- m.waitForEvent()() }()
 		select {
 		case msg := <-res:
-			if got, want := msg.(hubMessageMsg).Content, fmt.Sprintf("%03d", i); got != want {
+			if got, want := msg.(eventMsg).Event.(session.MessageEvent).Message.Content, fmt.Sprintf("%03d", i); got != want {
 				t.Fatalf("message %d arrived as %s, want %s (out of order)", i, got, want)
 			}
 		case <-time.After(10 * time.Second):
