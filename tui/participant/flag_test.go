@@ -72,6 +72,18 @@ func TestFlagged_NoticeIsShownOncePerFlag(t *testing.T) {
 	assert.Equal(t, 1, countOccurrences(visible(m.transcript.View()), "asked you to revise"))
 }
 
+// #53: a flagged participant whose new session has never seen the flag is told
+// once when the connect announcement arrives, and a repeat does not tell them again.
+func TestFlagged_ReconnectingSessionIsToldOnce(t *testing.T) {
+	m, _ := statusRig(t)
+	m = sized(m)
+
+	m = step(m, flagUpdate("Agent-alice"))
+	m = step(m, flagUpdate("Agent-alice"))
+
+	assert.Equal(t, 1, countOccurrences(visible(m.transcript.View()), "asked you to revise"))
+}
+
 func countOccurrences(s, sub string) int {
 	n := 0
 	for i := 0; i+len(sub) <= len(s); i++ {

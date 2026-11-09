@@ -66,6 +66,7 @@ func (c *Coordinator) Start(ctx context.Context) error {
 		{hub.MessageTypeFlag, c.handleFlag},
 		{hub.MessageTypeUnflag, c.handleUnflag},
 		{hub.MessageTypeResolve, c.handleResolve},
+		{hub.MessageTypeParticipantEvent, c.handleParticipantEvent},
 	} {
 		if _, err := c.hub.Subscribe(ctx, s.typ, s.handler); err != nil {
 			return err
@@ -157,6 +158,21 @@ func (c *Coordinator) handleResolve(msg *hub.Message) error {
 	if had {
 		c.publishRoundState(round)
 	}
+	return nil
+}
+
+// handleParticipantEvent announces the Round state when someone connects, so a
+// session that joins or reconnects mid-session shows where things stand. The
+// state is broadcast (ADR 0001) and idempotent, so everyone receiving it again
+// is harmless; it never changes anyone's status.
+func (c *Coordinator) handleParticipantEvent(msg *hub.Message) error {
+	if msg.Content != hub.ParticipantEventConnect {
+		return nil
+	}
+	c.mu.Lock()
+	round := c.round
+	c.mu.Unlock()
+	c.publishRoundState(round)
 	return nil
 }
 

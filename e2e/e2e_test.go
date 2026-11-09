@@ -491,6 +491,27 @@ func TestHostAsksForARevision(t *testing.T) {
 	}
 }
 
+// #53: a participant who joins after a new round started sees that round, not
+// round 1.
+func TestLateJoinerSeesCurrentRound(t *testing.T) {
+	addr, _, _ := startServer(t)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+
+	// Tab: transcript -> participants -> input -> buttons; [New Round] is the
+	// third button.
+	host.send(t, "\t\t\t")
+	host.send(t, "l")
+	host.send(t, "l")
+	host.send(t, "\r")
+	host.waitFor(t, "Participants (Round 2")
+
+	alice := connect(t, addr, "alice")
+	alice.joinAs(t, "Alice")
+	alice.waitFor(t, "Participants (Round 2")
+}
+
 // servers maps a server's address to its process, so a test can signal it.
 var servers sync.Map
 
