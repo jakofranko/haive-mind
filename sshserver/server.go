@@ -89,10 +89,22 @@ type sessionManager struct {
 	hub                 hub.Hub
 }
 
-func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
+// claimHost reports whether the caller becomes the host: the first caller does,
+// and the role stays taken until the host's session ends. The check and the
+// claim happen under one lock so two simultaneous first connections cannot both
+// become the host.
+func (m *sessionManager) claimHost() bool {
 	m.mu.Lock()
-	isHost := !m.hostConnected
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+	if m.hostConnected {
+		return false
+	}
+	m.hostConnected = true
+	return true
+}
+
+func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
+	isHost := m.claimHost()
 
 	var model interface {
 		tea.Model

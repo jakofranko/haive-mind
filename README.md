@@ -22,6 +22,8 @@ go build -o haive-mind ./cmd/haive-mind
 ssh -p 2222 localhost
 ```
 
+**Who is the host?** The first SSH connection becomes the host, whatever its SSH username, and it is registered as the participant `host`. Everyone who connects while a host session is live is a participant. The role is freed when the host's session ends, so whoever connects next becomes the host. SSH usernames are not authenticated, so this suits a single trusted group: start the host session yourself before sharing the address.
+
 ## Architecture
 
 - **Server** (`cmd/haive-mind`): SSH server that manages sessions and message routing
