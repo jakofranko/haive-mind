@@ -67,6 +67,18 @@ type trackedSession struct {
 	username string
 	isHost   bool
 	id       string
+
+	closeOnce sync.Once
+}
+
+// close stops the session's program and closes its model, once however many
+// times it is called: a replaced session is closed on replacement and again
+// when its own connection ends.
+func (t *trackedSession) close() {
+	t.closeOnce.Do(func() {
+		t.program.Kill() // a no-op once the program has exited
+		t.model.Close()
+	})
 }
 
 type sessionManager struct {
@@ -118,13 +130,21 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 func (m *sessionManager) admit(ctx context.Context, session *trackedSession) {
 	id, isHost := session.id, session.isHost
 	m.mu.Lock()
+	var replaced *trackedSession
 	if isHost {
+		replaced = m.hostSession
 		m.hostConnected = true
 		m.hostSession = session
 	} else {
+		replaced = m.participantSessions[id]
 		m.participantSessions[id] = session
 	}
 	m.mu.Unlock()
+
+	// The replaced session must not keep a second live model under this id.
+	if replaced != nil && replaced != session {
+		replaced.close()
+	}
 
 	go m.trackSession(ctx, session)
 
@@ -151,8 +171,7 @@ func (m *sessionManager) admit(ctx context.Context, session *trackedSession) {
 // forever and the end of the session is never processed.
 func (m *sessionManager) trackSession(ctx context.Context, session *trackedSession) {
 	<-ctx.Done()
-	session.program.Kill() // the middleware also quits it; Kill is a no-op once it has exited
-	session.model.Close()
+	session.close() // the middleware also quits the program
 
 	// Only the session still tracked for this id may unregister it: a newer
 	// session for the same id has replaced this one and must stay registered.

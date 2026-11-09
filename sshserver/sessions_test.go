@@ -2,6 +2,7 @@ package sshserver
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -99,5 +100,51 @@ func TestCurrentSessionEndingUnregistersParticipant(t *testing.T) {
 	waitUntil(t, "participant to be unregistered", func() bool { return !registered(h, id) })
 	if tracked(m, id) != nil {
 		t.Error("ended session is still tracked")
+	}
+}
+
+type closeCountingModel struct {
+	stubModel
+	closes *atomic.Int32
+}
+
+func (c closeCountingModel) Close() { c.closes.Add(1) }
+
+func newCountingSession(sshUsername string) (*trackedSession, *atomic.Int32) {
+	closes := &atomic.Int32{}
+	s := newTestSession(sshUsername)
+	s.model = closeCountingModel{closes: closes}
+	return s, closes
+}
+
+// A reconnect replaces the tracked session for its id: the replaced session's
+// model is closed exactly once (even after its own connection ends), and the
+// new session stays tracked and registered.
+func TestReplacedSessionIsClosedOnce(t *testing.T) {
+	m, h := newTestManager(t)
+	id := hub.ParticipantID("alice")
+	ctx1, end1 := context.WithCancel(context.Background())
+	ctx2, end2 := context.WithCancel(context.Background())
+	defer end2()
+	first, firstCloses := newCountingSession("alice")
+	second, secondCloses := newCountingSession("alice")
+
+	m.admit(ctx1, first)
+	m.admit(ctx2, second)
+
+	if got := firstCloses.Load(); got != 1 {
+		t.Fatalf("replaced session closed %d times on replacement, want 1", got)
+	}
+	end1() // the old connection ends on its own afterwards
+	time.Sleep(200 * time.Millisecond)
+
+	if got := firstCloses.Load(); got != 1 {
+		t.Errorf("replaced session closed %d times in total, want 1", got)
+	}
+	if secondCloses.Load() != 0 {
+		t.Error("the new session was closed")
+	}
+	if tracked(m, id) != second || !registered(h, id) {
+		t.Error("the new session should stay tracked and registered")
 	}
 }
