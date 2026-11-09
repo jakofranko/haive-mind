@@ -21,8 +21,8 @@ type countedSub struct {
 
 func (c *countedSub) Unsubscribe() { c.h.unsubs.Add(1); c.Subscription.Unsubscribe() }
 
-func (c *countingHub) Subscribe(ctx context.Context, t hub.MessageType, fn func(*hub.Message) error) (hub.Subscription, error) {
-	s, err := c.Hub.Subscribe(ctx, t, fn)
+func (c *countingHub) SubscribeTypes(ctx context.Context, ts []hub.MessageType, fn func(*hub.Message) error) (hub.Subscription, error) {
+	s, err := c.Hub.SubscribeTypes(ctx, ts, fn)
 	c.subs.Add(1)
 	return &countedSub{Subscription: s, h: c}, err
 }
@@ -31,7 +31,6 @@ func (c *countingHub) Subscribe(ctx context.Context, t hub.MessageType, fn func(
 func TestAppModel_Close_UnsubscribesEverything(t *testing.T) {
 	ch := &countingHub{Hub: hub.NewHub()}
 	m := NewAppModel(ch)
-	m.Init() // registers the subscriptions
 
 	if ch.subs.Load() == 0 {
 		t.Fatal("model made no subscriptions; test is not exercising anything")

@@ -154,8 +154,8 @@ func TestExtraTypesAreDeliveredOnlyToAClientThatAsks(t *testing.T) {
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeExportComplete, "hub", "saved", 1))
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeSystem, "hub", "after", 1))
 
-	if ev := next(t, host).(session.MessageEvent); ev.Message.Type != hub.MessageTypeExportComplete {
-		t.Errorf("host first event = %s, want export_complete", ev.Message.Type)
+	if ev, ok := next(t, host).(session.ExportEvent); !ok || ev.Path != "saved" {
+		t.Errorf("host first event = %+v, want an ExportEvent for \"saved\"", ev)
 	}
 	if ev := next(t, participant).(session.MessageEvent); ev.Message.Type != hub.MessageTypeSystem {
 		t.Errorf("participant first event = %s, want system (export_complete must not reach it)", ev.Message.Type)

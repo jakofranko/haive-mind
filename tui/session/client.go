@@ -14,7 +14,7 @@ import (
 )
 
 // Event is something the hub told this session. It is one of MessageEvent,
-// ParticipantEvent, RoundEvent or FlagEvent.
+// ParticipantEvent, RoundEvent, FlagEvent or ExportEvent.
 type Event interface{ event() }
 
 // MessageEvent is a hub message passed through unchanged.
@@ -30,6 +30,11 @@ type RoundEvent struct{ Round int }
 // FlagEvent carries the flagged Participant ids of a Flag update.
 type FlagEvent struct{ IDs []string }
 
+// ExportEvent reports a finished transcript export, with the file it went to.
+// Only a client created with hub.MessageTypeExportComplete receives it.
+type ExportEvent struct{ Path string }
+
+func (ExportEvent) event()      {}
 func (MessageEvent) event()     {}
 func (ParticipantEvent) event() {}
 func (RoundEvent) event()       {}
@@ -88,6 +93,8 @@ func (c *Client) receive(msg *hub.Message) error {
 		if ids, err := msg.FlaggedIDs(); err == nil {
 			c.inbox.Push(FlagEvent{IDs: ids})
 		}
+	case hub.MessageTypeExportComplete:
+		c.inbox.Push(ExportEvent{Path: msg.Content})
 	default:
 		c.inbox.Push(MessageEvent{Message: *msg})
 	}

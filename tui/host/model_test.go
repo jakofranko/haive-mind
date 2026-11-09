@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/session"
 )
 
 func TestAppModel_Init(t *testing.T) {
@@ -254,7 +255,7 @@ func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
 	// one, and the host adopts it when the announcement arrives.
 	assert.Equal(t, 1, model.round)
 
-	updatedModel, _ = model.Update(roundChangedMsg(2))
+	updatedModel, _ = model.Update(eventMsg{session.RoundEvent{Round: 2}})
 	model = updatedModel.(*AppModel)
 	assert.Equal(t, 2, model.round)
 }
