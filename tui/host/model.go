@@ -205,7 +205,9 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 	case session.RoundEvent:
 		m.round = ev.Round
 		m.participants.SetRound(m.round)
-	case session.FlagEvent:
+	case session.RoundStateEvent:
+		m.round = ev.Round
+		m.participants.SetRound(m.round)
 		m.participants.SetFlagged(ev.IDs)
 	case session.ExportEvent:
 		m.transcript.AddSystemMessage("Exported to " + ev.Path)

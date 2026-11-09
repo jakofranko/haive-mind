@@ -15,7 +15,7 @@ import (
 )
 
 // Event is something the hub told this session. It is one of MessageEvent,
-// ParticipantEvent, RoundEvent, FlagEvent or ExportEvent.
+// ParticipantEvent, RoundEvent, RoundStateEvent or ExportEvent.
 type Event interface{ event() }
 
 // MessageEvent is a hub message passed through unchanged.
@@ -28,8 +28,12 @@ type ParticipantEvent struct{ Participant *hub.Participant }
 // RoundEvent is a change of round.
 type RoundEvent struct{ Round int }
 
-// FlagEvent carries the flagged Participant ids of a Flag update.
-type FlagEvent struct{ IDs []string }
+// RoundStateEvent is the Coordinator's statement of where things stand: the
+// current round and the flagged Participant ids. It is not a round change.
+type RoundStateEvent struct {
+	Round int
+	IDs   []string
+}
 
 // ExportEvent reports a finished transcript export, with the file it went to.
 // Only a client created with hub.MessageTypeExportComplete receives it.
@@ -39,7 +43,7 @@ func (ExportEvent) event()      {}
 func (MessageEvent) event()     {}
 func (ParticipantEvent) event() {}
 func (RoundEvent) event()       {}
-func (FlagEvent) event()        {}
+func (RoundStateEvent) event()  {}
 
 // transcriptTypes are the message types every session shows in its transcript.
 // Adding one here makes it reach every TUI.
@@ -70,7 +74,7 @@ func New(h hub.Hub, extra ...hub.MessageType) *Client {
 	c := &Client{hub: h, inbox: inbox.New[Event](), ready: make(chan struct{})}
 
 	types := append([]hub.MessageType{}, transcriptTypes...)
-	types = append(types, hub.MessageTypeFlagUpdate, hub.MessageTypeParticipantEvent, hub.MessageTypeRoundChange)
+	types = append(types, hub.MessageTypeRoundState, hub.MessageTypeParticipantEvent, hub.MessageTypeRoundChange)
 	types = append(types, extra...)
 
 	sub, err := h.SubscribeTypes(context.Background(), types, c.receive)
@@ -93,9 +97,9 @@ func (c *Client) receive(msg *hub.Message) error {
 		}
 	case hub.MessageTypeRoundChange:
 		c.inbox.Push(RoundEvent{Round: msg.Round})
-	case hub.MessageTypeFlagUpdate:
-		if ids, err := msg.FlaggedIDs(); err == nil {
-			c.inbox.Push(FlagEvent{IDs: ids})
+	case hub.MessageTypeRoundState:
+		if ids, err := msg.RoundStateFlaggedIDs(); err == nil {
+			c.inbox.Push(RoundStateEvent{Round: msg.Round, IDs: ids})
 		}
 	case hub.MessageTypeExportComplete:
 		c.inbox.Push(ExportEvent{Path: msg.Content})

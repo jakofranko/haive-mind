@@ -86,12 +86,9 @@ func (c *Coordinator) handleNewRound(msg *hub.Message) error {
 	c.round++
 	round := c.round
 	c.responses[round] = nil
-	had := len(c.flagged) > 0
 	c.flagged = make(map[string]bool)
 	c.mu.Unlock()
-	if had {
-		c.publishFlags(round)
-	}
+	c.publishRoundState(round)
 	return c.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeRoundChange, "hub", "", round))
 }
 
@@ -129,7 +126,7 @@ func (c *Coordinator) handleFlag(msg *hub.Message) error {
 	round := c.round
 	c.mu.Unlock()
 	if changed {
-		c.publishFlags(round)
+		c.publishRoundState(round)
 	}
 	return nil
 }
@@ -145,7 +142,7 @@ func (c *Coordinator) handleUnflag(msg *hub.Message) error {
 	round := c.round
 	c.mu.Unlock()
 	if changed {
-		c.publishFlags(round)
+		c.publishRoundState(round)
 	}
 	return nil
 }
@@ -158,17 +155,17 @@ func (c *Coordinator) handleResolve(msg *hub.Message) error {
 	round := c.round
 	c.mu.Unlock()
 	if had {
-		c.publishFlags(round)
+		c.publishRoundState(round)
 	}
 	return nil
 }
 
-// publishFlags tells everyone who is currently flagged.
-func (c *Coordinator) publishFlags(round int) {
+// publishRoundState tells everyone the current round and who is flagged.
+func (c *Coordinator) publishRoundState(round int) {
 	c.mu.Lock()
 	ids := c.flaggedLocked()
 	c.mu.Unlock()
-	c.hub.Send(context.Background(), hub.NewFlagUpdate(round, ids))
+	c.hub.Send(context.Background(), hub.NewRoundState(round, ids))
 }
 
 // trackDirective remembers the question the host asked in each round.
@@ -208,7 +205,7 @@ func (c *Coordinator) trackResponse(msg *hub.Message) error {
 	round := c.round
 	c.mu.Unlock()
 	if wasFlagged {
-		c.publishFlags(round)
+		c.publishRoundState(round)
 	}
 	return nil
 }

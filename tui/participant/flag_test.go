@@ -10,7 +10,7 @@ import (
 )
 
 func flagUpdate(ids ...string) eventMsg {
-	return eventMsg{session.FlagEvent{IDs: ids}}
+	return eventMsg{session.RoundStateEvent{Round: 1, IDs: ids}}
 }
 
 // sized gives the model a screen so View() shows the panes.
@@ -98,4 +98,53 @@ func TestFlagged_SidebarShowsReviseForFlaggedParticipants(t *testing.T) {
 
 	m = step(m, flagUpdate())
 	assert.NotContains(t, visible(m.View()), "revise")
+}
+
+func roundState(round int, ids ...string) eventMsg {
+	return eventMsg{session.RoundStateEvent{Round: round, IDs: ids}}
+}
+
+// A Round state sets the round (and the sidebar title) but is not a new round:
+// the participant keeps their status and what they are typing.
+func TestRoundState_SetsRoundWithoutResettingStatusOrResponseBox(t *testing.T) {
+	m, status := submitted(t, "use postgres")
+	m = typeRunes(m, "draft in progress")
+	assert.Equal(t, hub.StatusTyping, status())
+
+	m = step(m, roundState(3))
+
+	assert.Equal(t, 3, m.round)
+	assert.Contains(t, visible(m.View()), "Participants (Round 3")
+	assert.Equal(t, hub.StatusTyping, status())
+	assert.Equal(t, "draft in progress", m.response.Value())
+}
+
+// A participant who already submitted stays submitted through a Round state.
+func TestRoundState_LeavesSubmittedStatusAlone(t *testing.T) {
+	m, status := submitted(t, "use postgres")
+
+	m = step(m, roundState(1))
+
+	assert.Equal(t, hub.StatusSubmitted, status())
+}
+
+// Hearing the same flag again, as a repeat announcement can cause, does not
+// tell the participant a second time.
+func TestRoundState_RepeatDoesNotRenotifyAFlaggedParticipant(t *testing.T) {
+	m, _ := submitted(t, "use postgres")
+
+	m = step(m, roundState(1, "Agent-alice"))
+	m = step(m, roundState(1, "Agent-alice"))
+
+	assert.Equal(t, 1, countOccurrences(visible(m.transcript.View()), "asked you to revise"))
+}
+
+// A participant who is newly flagged is told once, and the round is set.
+func TestRoundState_NewlyFlaggedParticipantIsToldOnce(t *testing.T) {
+	m, _ := submitted(t, "use postgres")
+
+	m = step(m, roundState(2, "Agent-alice"))
+
+	assert.Equal(t, 1, countOccurrences(visible(m.transcript.View()), "asked you to revise"))
+	assert.Contains(t, visible(m.View()), "Participants (Round 2")
 }

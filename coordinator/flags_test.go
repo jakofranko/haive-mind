@@ -11,22 +11,24 @@ import (
 	"jakofranko/haive-mind/hub"
 )
 
-// updates records every flag_update the coordinator publishes.
+// updates records every round_state the coordinator publishes.
 type updates struct {
 	mu   sync.Mutex
 	list [][]string
+	rnds []int
 }
 
 func watchUpdates(t *testing.T, h hub.Hub) *updates {
 	t.Helper()
 	u := &updates{}
-	if _, err := h.Subscribe(context.Background(), hub.MessageTypeFlagUpdate, func(m *hub.Message) error {
-		ids, err := m.FlaggedIDs()
+	if _, err := h.Subscribe(context.Background(), hub.MessageTypeRoundState, func(m *hub.Message) error {
+		ids, err := m.RoundStateFlaggedIDs()
 		if err != nil {
-			t.Errorf("flag_update content %q is not a JSON list: %v", m.Content, err)
+			t.Errorf("round_state content %q is not a JSON list: %v", m.Content, err)
 		}
 		u.mu.Lock()
 		u.list = append(u.list, ids)
+		u.rnds = append(u.rnds, m.Round)
 		u.mu.Unlock()
 		return nil
 	}); err != nil {
@@ -42,6 +44,15 @@ func (u *updates) last() []string {
 		return nil
 	}
 	return u.list[len(u.list)-1]
+}
+
+func (u *updates) lastRound() int {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if len(u.rnds) == 0 {
+		return 0
+	}
+	return u.rnds[len(u.rnds)-1]
 }
 
 func (u *updates) count() int {
@@ -140,6 +151,55 @@ func TestFlag_NewRoundClearsFlags(t *testing.T) {
 	h.StartRound(1)
 
 	eventually(t, "no flags in the new round", func() bool { return flaggedIs(c) })
+}
+
+// A new round is announced as a Round state even when nobody was flagged.
+func TestRoundState_PublishedOnNewRound(t *testing.T) {
+	h, _, _ := newRig(t)
+	u := watchUpdates(t, h)
+
+	h.StartRound(1)
+
+	eventually(t, "round state for round 2", func() bool { return u.count() == 1 && u.lastRound() == 2 && len(u.last()) == 0 })
+}
+
+// Flags set in round 1 are cleared by the new round, and the announcement says so.
+func TestRoundState_NewRoundAnnouncesClearedFlags(t *testing.T) {
+	h, _, _ := newRig(t)
+	u := watchUpdates(t, h)
+	flag(h, "Agent-alice", true)
+	eventually(t, "flag announced", func() bool { return u.count() == 1 })
+
+	h.StartRound(1)
+
+	eventually(t, "round 2 with no flags", func() bool { return u.count() == 2 && u.lastRound() == 2 && len(u.last()) == 0 })
+}
+
+// A stale new-round request announces nothing.
+func TestRoundState_StaleNewRoundPublishesNothing(t *testing.T) {
+	h, c, _ := newRig(t)
+	h.StartRound(1)
+	eventually(t, "round 2", func() bool { return c.Round() == 2 })
+	u := watchUpdates(t, h)
+
+	h.StartRound(1)
+	time.Sleep(150 * time.Millisecond)
+
+	if n := u.count(); n != 0 {
+		t.Errorf("%d round states for a stale request, want 0", n)
+	}
+}
+
+// A flagged participant's resubmit lifts the flag and the round state says so.
+func TestRoundState_PublishedOnResubmitWithCurrentRound(t *testing.T) {
+	h, c, _ := newRig(t)
+	u := watchUpdates(t, h)
+	flag(h, "Agent-alice", true)
+	eventually(t, "flagged", func() bool { return flaggedIs(c, "Agent-alice") })
+
+	respond(h, "Agent-alice", "Alice", "revised", 1)
+
+	eventually(t, "empty round state for round 1", func() bool { return u.count() == 2 && u.lastRound() == 1 && len(u.last()) == 0 })
 }
 
 // Only each participant's latest submission in the round is synthesized.

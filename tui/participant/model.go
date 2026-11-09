@@ -172,7 +172,9 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 		m.round = ev.Round
 		m.sidebar.SetRound(m.round)
 		m.setStatus(hub.StatusIdle)
-	case session.FlagEvent:
+	case session.RoundStateEvent:
+		m.round = ev.Round
+		m.sidebar.SetRound(m.round)
 		m.applyFlags(ev.IDs)
 	}
 }
