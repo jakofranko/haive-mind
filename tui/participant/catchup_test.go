@@ -104,6 +104,19 @@ func TestSnapshot_LastSubmission_IsOfferedWhenFlaggedToRevise(t *testing.T) {
 	assert.Equal(t, "use postgres", m.response.Value())
 }
 
+// On a reconnect the coordinator sends Round state before the snapshot, so a
+// participant who is already flagged gets their answer when the snapshot lands.
+func TestSnapshot_LastSubmission_IsOfferedWhenAlreadyFlagged(t *testing.T) {
+	m, h := catchupRig(t)
+	last := hub.NewMessage(hub.MessageTypeResponse, "Agent-alice", "use postgres", 1)
+
+	m = step(m, flagUpdate("Agent-alice"))
+	h.Send(context.Background(), hub.NewTranscriptSnapshot(1, "Agent-alice", nil, last))
+	m = receive(t, m)
+
+	assert.Equal(t, "use postgres", m.response.Value())
+}
+
 // Text already being typed is left alone, as for any revise.
 func TestSnapshot_LastSubmission_DoesNotOverwriteTyping(t *testing.T) {
 	m, h := catchupRig(t)

@@ -162,6 +162,11 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 		m.transcript.PrependMessages(ev.Messages)
 		if ev.LastSubmission != nil {
 			m.lastSubmitted = ev.LastSubmission.Content
+			// Round state arrives before the snapshot, so a participant who
+			// reconnects already flagged learns of their last answer only now.
+			if m.flaggedSelf {
+				m.restoreLastSubmission()
+			}
 		}
 	case session.ParticipantEvent:
 		if ev.Participant.Status == hub.StatusDisconnected {
@@ -405,9 +410,15 @@ func (m *ParticipantModel) applyFlags(ids []string) {
 		return
 	}
 	m.transcript.AddSystemMessage("The host asked you to revise your response.")
+	m.restoreLastSubmission()
+	m.setStatus(hub.StatusIdle)
+}
+
+// restoreLastSubmission puts the last answer back for editing, unless the
+// participant is already typing.
+func (m *ParticipantModel) restoreLastSubmission() {
 	if strings.TrimSpace(m.response.Value()) == "" && m.lastSubmitted != "" {
 		m.response.SetValue(m.lastSubmitted)
 		m.hub.SetDraft(m.id, m.lastSubmitted)
 	}
-	m.setStatus(hub.StatusIdle)
 }
