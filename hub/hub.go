@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
@@ -291,18 +292,6 @@ func (h *hubImpl) SetSynthesizer(runner agent.Runner) {
 	h.synthesizer = runner
 }
 
-func (h *hubImpl) SendToAgent(ctx context.Context, prompt string) (string, error) {
-	h.mu.RLock()
-	runner := h.agentRunner
-	h.mu.RUnlock()
-
-	if runner == nil {
-		return "", fmt.Errorf("no agent runner configured")
-	}
-
-	return runner.Run(ctx, prompt)
-}
-
 func (h *hubImpl) Start() error {
 	h.mu.Lock()
 	if h.started {
@@ -366,7 +355,30 @@ func (h *hubImpl) invokeSynthesizer(msg *Message) {
 	h.mu.RLock()
 	runner := h.synthesizer
 	h.mu.RUnlock()
+
+	h.runCall("synthesizer", runner, "Synthesis failed: ", msg, func(out string) {
+		h.Send(h.ctx, NewMessage(MessageTypeAggregateDraft, "synthesizer", out, msg.Round))
+	})
+}
+
+func (h *hubImpl) invokeAgent(msg *Message) {
+	h.mu.RLock()
+	runner := h.agentRunner
+	h.mu.RUnlock()
+
+	h.runCall("agent", runner, "Agent error: ", msg, func(out string) {
+		h.Send(h.ctx, NewMessage(MessageTypeAgentReply, "agent", out, msg.Round))
+	})
+}
+
+// runCall is the one path for calling a runner: it runs msg.Content off the
+// dispatch loop, tracked so Stop waits for it, and on failure tells everyone
+// (a system message) and the host (an agent error with a retry). On success it
+// hands the output to publish. Sends after Stop fail with ErrHubStopped, which
+// is why their results are not checked here. A missing runner skips the call.
+func (h *hubImpl) runCall(name string, runner agent.Runner, failurePrefix string, msg *Message, publish func(out string)) {
 	if runner == nil {
+		slog.Warn("no runner set; skipping call", "call", name, "type", msg.Type)
 		return
 	}
 
@@ -375,34 +387,12 @@ func (h *hubImpl) invokeSynthesizer(msg *Message) {
 		defer h.wg.Done()
 		out, err := runner.Run(h.ctx, msg.Content)
 		if err != nil {
-			h.Send(h.ctx, NewMessage(MessageTypeSystem, "hub", "Synthesis failed: "+err.Error(), msg.Round))
-			h.reportFailure("Synthesis failed: "+err.Error(), msg)
+			text := failurePrefix + err.Error()
+			h.Send(h.ctx, NewMessage(MessageTypeSystem, "hub", text, msg.Round))
+			h.reportFailure(text, msg)
 			return
 		}
-		h.Send(h.ctx, NewMessage(MessageTypeAggregateDraft, "synthesizer", out, msg.Round))
-	}()
-}
-
-func (h *hubImpl) invokeAgent(msg *Message) {
-	h.mu.RLock()
-	runner := h.agentRunner
-	h.mu.RUnlock()
-
-	if runner == nil {
-		return
-	}
-
-	go func() {
-		response, err := runner.Run(h.ctx, msg.Content)
-		if err != nil {
-			errMsg := NewMessage(MessageTypeSystem, "hub", "Agent error: "+err.Error(), msg.Round)
-			h.Send(h.ctx, errMsg)
-			h.reportFailure("Agent error: "+err.Error(), msg)
-			return
-		}
-
-		reply := NewMessage(MessageTypeAgentReply, "agent", response, msg.Round)
-		h.Send(h.ctx, reply)
+		publish(out)
 	}()
 }
 
