@@ -85,12 +85,12 @@ A complete cycle: host sends directive → agent replies → participants respon
 _Avoid_: Turn, cycle, iteration, phase
 
 **Transcript snapshot**:
-The recorded conversation sent to one session when it connects, with that participant's last response for the current round, if any. An ordinary message addressed to the connecting participant id, published beside Round state; other sessions ignore it. Carries `MessageTypeTranscriptSnapshot`.
-_Avoid_: Replay, history sync
+The recorded conversation sent to one session when it connects, with that participant's last response for the current round, if any. An ordinary message addressed to the connecting participant id, published beside Round state; other sessions ignore it. Carries `MessageTypeTranscriptSnapshot`. Not Round state: it carries the conversation so far, not where the round stands.
+_Avoid_: Replay, history sync, Round state
 
 **Round state**:
 The coordinator's announcement of the current round and who is flagged. Published whenever either changes and whenever someone connects, so a session that joins late starts correct. It never resets anyone's status. Carries `MessageTypeRoundState`.
-_Avoid_: Snapshot, sync, session state
+_Avoid_: Sync, session state (a bare "snapshot" is ambiguous; the conversation sent on connect is the Transcript snapshot)
 
 **Round change**:
 The event that a new round has started. Participants go back to idle. Distinct from Round state, which says where things stand without starting anything. Carries `MessageTypeRoundChange`.
