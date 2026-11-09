@@ -148,3 +148,31 @@ func TestReplacedSessionIsClosedOnce(t *testing.T) {
 		t.Error("the new session should stay tracked and registered")
 	}
 }
+
+// Two connections arriving together must not both become the host: the first
+// claim takes the role and every other claim is a participant.
+func TestClaimHost_OnlyOneSimultaneousConnectionBecomesTheHost(t *testing.T) {
+	m := &sessionManager{participantSessions: map[string]*trackedSession{}, hub: hub.NewHub()}
+
+	const connections = 50
+	var hosts atomic.Int32
+	start := make(chan struct{})
+	done := make(chan struct{}, connections)
+	for i := 0; i < connections; i++ {
+		go func() {
+			<-start
+			if m.claimHost() {
+				hosts.Add(1)
+			}
+			done <- struct{}{}
+		}()
+	}
+	close(start)
+	for i := 0; i < connections; i++ {
+		<-done
+	}
+
+	if got := hosts.Load(); got != 1 {
+		t.Fatalf("%d of %d simultaneous connections became the host, want exactly 1", got, connections)
+	}
+}
