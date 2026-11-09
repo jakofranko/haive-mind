@@ -29,15 +29,15 @@ _Avoid_: Controller, manager, session
 ### Identity
 
 **SSH username**:
-The name a person connects with. Keys their display name in the hub (`SetDisplayName`).
+The name a person connects with. Only the participant id is derived from it; nothing else is keyed by it.
 _Avoid_: Login, account
 
 **Participant id**:
-The stable hub identity of a participant: `Agent-<SSH username>`, or `host` for the host. Keys the participant registry, drafts, statuses and flags. Never changes during a session. Carried on responses as `FromID`.
-_Avoid_: Name (ambiguous: `Participant.Name` holds the id)
+The stable hub identity of a participant: `Agent-<SSH username>`, or `host` for the host. Keys the participant registry, display names, drafts, statuses and flags, and is decided in one place. Never changes during a session. Carried on responses as `FromID`.
+_Avoid_: Name (ambiguous with Display name)
 
 **Display name**:
-What people see: chosen on first connect and shown in lists and transcript headers. Carried on messages as `From`. Not unique and not stable; never key anything by it.
+What people see: chosen on first connect and shown in lists and transcript headers. Carried on messages as `From`. Stored in the hub under the participant id, and changed by renaming the registered participant. Not unique and not stable; never key anything by it.
 _Avoid_: Nickname, username, handle
 
 ### Messaging
