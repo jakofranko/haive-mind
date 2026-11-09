@@ -373,3 +373,76 @@ func TestAgentTimeoutThenRetry(t *testing.T) {
 		t.Errorf("agent invoked %d times, want 2 (the timeout and the retry):\n%s", n, b)
 	}
 }
+
+// count reports how many times text has appeared on this terminal.
+func (tm *term) count(text string) int { return strings.Count(tm.screen(), text) }
+
+// G12: the host flags Alice, who is told and gets her answer back; Aggregate
+// warns while she is flagged; once she resubmits, only her new answer is
+// synthesized.
+func TestHostAsksForARevision(t *testing.T) {
+	addr, _, agentLog := startServer(t)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+	alice := connect(t, addr, "alice")
+	alice.joinAs(t, "Alice")
+	bob := connect(t, addr, "bob")
+	bob.joinAs(t, "Bobby")
+
+	host.send(t, "\t\t")
+	host.send(t, "hello\r")
+	alice.waitFor(t, "AGENTREPLY-hello")
+
+	alice.send(t, "\t\t")
+	alice.send(t, "alice-first\r")
+	bob.send(t, "\t\t")
+	bob.send(t, "bobsays-sqlite\r")
+	host.waitFor(t, "alice-first")
+	host.waitFor(t, "bobsays-sqlite")
+
+	// The host selects Alice's row (host, Alice, Bobby) and flags her.
+	aliceTypedBefore := alice.count("alice-first")
+	host.send(t, "\x1b[Z") // back from the input to the participants list
+	host.send(t, "j")
+	host.send(t, "c")
+	host.waitFor(t, "revise")
+	alice.waitFor(t, "asked you to revise")
+	if alice.count("alice-first") <= aliceTypedBefore {
+		t.Errorf("Alice's earlier answer did not come back into her response box")
+	}
+
+	// Aggregating while she is flagged asks first; the host backs out.
+	host.send(t, "\t\t") // participants -> input -> buttons; [Aggregate] is first
+	host.send(t, "\r")
+	host.waitFor(t, "still flagged")
+	host.send(t, "\x1b")
+
+	// Alice revises and resubmits; that lifts her flag.
+	alice.send(t, "-revised\r")
+	bob.waitFor(t, "alice-first-revised")
+	time.Sleep(300 * time.Millisecond)
+
+	host.send(t, "\r") // [Aggregate] again: no warning now
+	host.waitFor(t, "AGENTREPLY-Several")
+
+	b, _ := os.ReadFile(agentLog)
+	var prompts []string
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		p, err := strconv.Unquote(line)
+		if err != nil {
+			t.Fatalf("bad agent log line %q: %v", line, err)
+		}
+		prompts = append(prompts, p)
+	}
+	if len(prompts) != 2 {
+		t.Fatalf("agent invoked %d times, want 2 (directive, one synthesis): %q", len(prompts), prompts)
+	}
+	synthesis := prompts[1]
+	if !strings.Contains(synthesis, "Alice: alice-first-revised") || !strings.Contains(synthesis, "Bobby: bobsays-sqlite") {
+		t.Errorf("synthesis lacks the current answers: %s", synthesis)
+	}
+	if strings.Contains(synthesis, "Alice: alice-first\n") || strings.HasSuffix(synthesis, "Alice: alice-first") {
+		t.Errorf("synthesis still has Alice's superseded answer: %s", synthesis)
+	}
+}
