@@ -137,7 +137,7 @@ func TestFlag_NewRoundClearsFlags(t *testing.T) {
 	flag(h, "Agent-alice", true)
 	eventually(t, "flagged", func() bool { return flaggedIs(c, "Agent-alice") })
 
-	h.StartRound(2)
+	h.StartRound(1)
 
 	eventually(t, "no flags in the new round", func() bool { return flaggedIs(c) })
 }

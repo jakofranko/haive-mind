@@ -153,7 +153,7 @@ func TestAggregateRequest_WithNoResponses_DoesNotSynthesize(t *testing.T) {
 func TestNewRound_AdvancesAndAnnouncesOnce(t *testing.T) {
 	h, c, _ := newRig(t)
 
-	if err := h.StartRound(2); err != nil {
+	if err := h.StartRound(1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -168,6 +168,30 @@ func TestNewRound_AdvancesAndAnnouncesOnce(t *testing.T) {
 	if got := countType(c.Transcript(), hub.MessageTypeRoundChange, ""); got != 1 {
 		t.Errorf("got %d round-change messages, want 1", got)
 	}
+}
+
+// A request naming a round that has already ended is ignored: nothing is
+// announced and the round does not move.
+func TestNewRound_StaleOrRepeatedRequestIsIgnored(t *testing.T) {
+	h, c, _ := newRig(t)
+
+	h.StartRound(1)
+	eventually(t, "round 2", func() bool { return c.Round() == 2 })
+
+	h.StartRound(1) // repeat of the request that already ended round 1
+	h.StartRound(0) // stale
+	h.StartRound(5) // names a round that is not the current one
+	time.Sleep(150 * time.Millisecond)
+
+	if got := c.Round(); got != 2 {
+		t.Errorf("Round() = %d, want 2", got)
+	}
+	if got := countType(c.Transcript(), hub.MessageTypeRoundChange, ""); got != 1 {
+		t.Errorf("got %d round-change messages, want 1", got)
+	}
+
+	h.StartRound(2) // naming the current round still advances
+	eventually(t, "round 3", func() bool { return c.Round() == 3 })
 }
 
 // G4: concurrent traffic must not race on coordinator state (run with -race).

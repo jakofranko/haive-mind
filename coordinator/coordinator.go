@@ -74,10 +74,15 @@ func (c *Coordinator) Start(ctx context.Context) error {
 	return nil
 }
 
-// handleNewRound advances the round and announces the new number. Flags belong
-// to a round, so they end with it.
+// handleNewRound advances the round and announces the new number. The request
+// names the round being ended; one naming any other round is stale or a repeat
+// and is ignored. Flags belong to a round, so they end with it.
 func (c *Coordinator) handleNewRound(msg *hub.Message) error {
 	c.mu.Lock()
+	if msg.Round != c.round {
+		c.mu.Unlock()
+		return nil
+	}
 	c.round++
 	round := c.round
 	c.responses[round] = nil

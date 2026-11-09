@@ -121,12 +121,12 @@ func TestHub_StartRound(t *testing.T) {
 	assert.NoError(t, err)
 	defer sub.Unsubscribe()
 
-	err = hubChans.StartRound(2)
+	err = hubChans.StartRound(1)
 	assert.NoError(t, err)
 
 	select {
 	case received := <-roundsReceived:
-		assert.Equal(t, 2, received.Round)
+		assert.Equal(t, 1, received.Round) // the round being ended
 		assert.Equal(t, MessageTypeNewRound, received.Type)
 	case <-time.After(500 * time.Millisecond):
 		t.Error("Timeout waiting for new round")
