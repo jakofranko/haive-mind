@@ -66,7 +66,7 @@ type trackedSession struct {
 	model    interface{ Close() }
 	username string
 	isHost   bool
-	name     string
+	id       string
 }
 
 type sessionManager struct {
@@ -86,16 +86,16 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 		tea.Model
 		Close()
 	}
-	var name string
+	var id string
 	var sshUsername string
 
 	if isHost {
-		name = hub.HostID
+		id = hub.HostID
 		model = host.NewAppModel(m.hub)
 	} else {
 		sshUsername = s.User()
-		name = hub.ParticipantID(sshUsername)
-		model = participant.NewParticipantModel(m.hub, name, sshUsername)
+		id = hub.ParticipantID(sshUsername)
+		model = participant.NewParticipantModel(m.hub, id, sshUsername)
 	}
 
 	program := tea.NewProgram(model, append(bubbletea.MakeOptions(s), tea.WithoutSignalHandler())...) // the server, not each session, handles Ctrl+C
@@ -105,7 +105,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 		model:    model,
 		username: sshUsername,
 		isHost:   isHost,
-		name:     name,
+		id:       id,
 	}
 
 	m.admit(s.Context(), session)
@@ -116,29 +116,29 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 // admit records the session as the current one for its participant id,
 // starts tracking its end, and registers the participant with the hub.
 func (m *sessionManager) admit(ctx context.Context, session *trackedSession) {
-	name, isHost := session.name, session.isHost
+	id, isHost := session.id, session.isHost
 	m.mu.Lock()
 	if isHost {
 		m.hostConnected = true
 		m.hostSession = session
 	} else {
-		m.participantSessions[name] = session
+		m.participantSessions[id] = session
 	}
 	m.mu.Unlock()
 
 	go m.trackSession(ctx, session)
 
 	// Register participant with hub
-	displayName := m.hub.GetDisplayName(name)
+	displayName := m.hub.GetDisplayName(id)
 	if displayName == "" {
 		if isHost {
 			displayName = "Host"
 		} else {
-			displayName = name
+			displayName = id
 		}
 	}
 
-	p := hub.NewParticipantEvent(name, displayName, hub.StatusIdle, hub.ParticipantEventConnect)
+	p := hub.NewParticipantEvent(id, displayName, hub.StatusIdle, hub.ParticipantEventConnect)
 	if err := m.hub.RegisterParticipant(p); err != nil {
 		log.Printf("Failed to register participant: %v", err)
 	}
@@ -166,13 +166,13 @@ func (m *sessionManager) trackSession(ctx context.Context, session *trackedSessi
 		m.hostConnected = false
 		m.hostSession = nil
 	} else {
-		if m.participantSessions[session.name] != session {
+		if m.participantSessions[session.id] != session {
 			return
 		}
-		delete(m.participantSessions, session.name)
+		delete(m.participantSessions, session.id)
 	}
 
-	if err := m.hub.UnregisterParticipant(session.name); err != nil {
+	if err := m.hub.UnregisterParticipant(session.id); err != nil {
 		log.Printf("Failed to unregister participant: %v", err)
 	}
 }

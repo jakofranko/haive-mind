@@ -22,7 +22,7 @@ func newTestSession(sshUsername string) *trackedSession {
 		program:  tea.NewProgram(stubModel{}),
 		model:    stubModel{},
 		username: sshUsername,
-		name:     hub.ParticipantID(sshUsername),
+		id:       hub.ParticipantID(sshUsername),
 	}
 }
 
