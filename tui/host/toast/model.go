@@ -147,7 +147,7 @@ func (m Model) View() string {
 	var content string
 	if m.retryFunc != nil {
 		btnStyle := m.styles.button
-		content = style.Render(m.message + "\n\n" + btnStyle.Render("[" + m.action + "]  [Dismiss]"))
+		content = style.Render(m.message + "\n\n" + btnStyle.Render("["+m.action+"]  [Dismiss]"))
 	} else {
 		content = style.Render(m.message)
 	}

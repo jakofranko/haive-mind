@@ -1,0 +1,4 @@
+# One line ending everywhere, whatever core.autocrlf says, so tools that match
+# multi-line text behave the same on every machine.
+* text=auto eol=lf
+*.png binary

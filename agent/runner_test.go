@@ -112,7 +112,7 @@ func TestRun_TimesOutAfterTheConfiguredDuration(t *testing.T) {
 	stubOpencode(t, map[string]string{"STUB_SLEEP_MS": "5000"})
 
 	start := time.Now()
-	_, err := agent.NewRunner(200 * time.Millisecond).Run(context.Background(), "q")
+	_, err := agent.NewRunner(200*time.Millisecond).Run(context.Background(), "q")
 	if !errors.Is(err, agent.ErrAgentTimeout) {
 		t.Fatalf("err = %v, want ErrAgentTimeout", err)
 	}

@@ -110,8 +110,6 @@ func NewHub() *hubImpl {
 		joined:       make(map[string]int),
 		displayNames: make(map[string]string),
 		drafts:       make(map[string]string),
-		agentRunner:  agent.NewDefaultRunner(),
-		synthesizer:  agent.NewDefaultRunner(),
 		ctx:          ctx,
 		cancel:       cancel,
 		outbound:     make(chan *Message, 100),

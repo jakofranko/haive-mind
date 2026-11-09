@@ -164,6 +164,9 @@ func startServer(t *testing.T) (addr, dataDir, agentLog string) {
 // startServerWith adds command-line flags and environment to the server.
 func startServerWith(t *testing.T, flags, env []string) (addr, dataDir, agentLog string) {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("builds and runs the real binary; skipped with -short")
+	}
 	root := repoRoot(t)
 	bin := t.TempDir()
 	goBuild(t, root, filepath.Join(bin, exe("haive-mind")), "./cmd/haive-mind")
@@ -268,7 +271,7 @@ func TestFullRound(t *testing.T) {
 
 	// Host exports (button 4: three moves right) and the file is valid JSON
 	// containing the whole round.
-	host.send(t, "\t") // the host is still in the input pane after sending
+	host.send(t, "\t")       // the host is still in the input pane after sending
 	for i := 0; i < 3; i++ { // one key event per press; "lll" would be a single event
 		host.send(t, "l")
 	}
