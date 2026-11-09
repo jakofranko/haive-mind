@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// Runner runs one prompt and returns the answer. Run must return promptly
+// when ctx is cancelled: the hub cancels it on Stop and then waits for every
+// run in flight to finish.
 type Runner interface {
 	Run(ctx context.Context, prompt string) (string, error)
 }

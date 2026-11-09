@@ -26,7 +26,6 @@ type Hub interface {
 	GetDraft(name string) string
 	SetAgentRunner(runner agent.Runner)
 	SetSynthesizer(runner agent.Runner)
-	SendToAgent(ctx context.Context, prompt string) (string, error)
 	Start() error
 	Stop() error
 	GetParticipants() []*Participant
