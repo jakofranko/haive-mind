@@ -76,7 +76,7 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 		namePrompt:       namePrompt,
 		namePromptActive: false,
 		// The host also hears about failed agent calls and finished exports.
-		client: session.New(hubChans, hub.MessageTypeAgentError, hub.MessageTypeExportComplete),
+		client: session.New(hubChans, hub.HostID, hub.MessageTypeAgentError, hub.MessageTypeExportComplete),
 	}
 
 	// Check if we have a stored display name
@@ -207,6 +207,8 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 		m.round = ev.Round
 		m.participants.SetRound(m.round)
 		m.participants.SetFlagged(ev.IDs)
+	case session.SnapshotEvent:
+		m.transcript.PrependMessages(ev.Messages)
 	case session.ExportEvent:
 		m.transcript.AddSystemMessage("Exported to " + ev.Path)
 	}

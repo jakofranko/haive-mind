@@ -491,25 +491,45 @@ func TestHostAsksForARevision(t *testing.T) {
 	}
 }
 
-// #53: a participant who joins after a new round started sees that round, not
-// round 1.
+// #53, #67: a participant who joins after a new round started sees that round,
+// not round 1, and the directive and aggregate already exchanged.
 func TestLateJoinerSeesCurrentRound(t *testing.T) {
 	addr, _, _ := startServer(t)
 
 	host := connect(t, addr, "host")
 	host.joinAs(t, "Hosty")
+	bob := connect(t, addr, "bob")
+	bob.joinAs(t, "Bobby")
 
-	// Tab: transcript -> participants -> input -> buttons; [New Round] is the
-	// third button.
-	host.send(t, "\t\t\t")
-	host.send(t, "l")
-	host.send(t, "l")
-	host.send(t, "\r")
-	host.waitFor(t, "Participants (Round 2")
+	startNewRound(t, host)
+	directAndAggregate(t, host, bob)
 
 	alice := connect(t, addr, "alice")
 	alice.joinAs(t, "Alice")
 	alice.waitFor(t, "Participants (Round 2")
+	alice.waitFor(t, "AGENTREPLY-hello")
+	alice.waitFor(t, "bobsays-sqlite")
+	alice.waitFor(t, "AGENTREPLY-Several")
+}
+
+// directAndAggregate has the host (focus on the buttons, as startNewRound
+// leaves it) direct the agent, bob answer, and the host aggregate and send the
+// draft.
+func directAndAggregate(t *testing.T, host, bob *term) {
+	t.Helper()
+	host.send(t, "\t\t\t") // buttons -> transcript -> participants -> input
+	host.send(t, "hello\r")
+	bob.waitFor(t, "AGENTREPLY-hello")
+	bob.send(t, "\t\t")
+	bob.send(t, "bobsays-sqlite\r")
+	host.waitFor(t, "bobsays-sqlite")
+	host.send(t, "\t") // input -> buttons, still on [New Round]; back to [Aggregate]
+	host.send(t, "h")
+	host.send(t, "h")
+	host.send(t, "\r")
+	host.waitFor(t, "AGENTREPLY-Several")
+	host.send(t, "\r") // the draft opens in the input; send it as it is
+	host.waitFor(t, "AGENTREPLY-AGENTREPLY-Several")
 }
 
 // startNewRound has the host press [New Round] and waits for round 2.
@@ -530,13 +550,19 @@ func TestReconnectedHostSeesCurrentRound(t *testing.T) {
 
 	host := connect(t, addr, "host")
 	host.joinAs(t, "Hosty")
+	bob := connect(t, addr, "bob")
+	bob.joinAs(t, "Bobby")
 	startNewRound(t, host)
+	directAndAggregate(t, host, bob)
 
 	host.disconnect()
 	time.Sleep(300 * time.Millisecond) // let the server notice
 
 	back := connect(t, addr, "host") // same SSH user: no name prompt this time
 	back.waitFor(t, "Participants (Round 2")
+	back.waitFor(t, "AGENTREPLY-hello")
+	back.waitFor(t, "bobsays-sqlite")
+	back.waitFor(t, "AGENTREPLY-AGENTREPLY-Several") // the newest message is on screen
 	// Only the host screen has the buttons: the old session's end must have
 	// freed the host role, or this session is a participant.
 	back.waitFor(t, "New Round")
@@ -559,6 +585,46 @@ func TestReconnectedParticipantSeesCurrentRound(t *testing.T) {
 
 	back := connect(t, addr, "alice") // same SSH user: no name prompt this time
 	back.waitFor(t, "Participants (Round 2")
+}
+
+// #67: a participant who submitted, dropped, and reconnects after the host
+// flagged them is told to revise and finds their previous answer waiting.
+func TestReconnectedFlaggedParticipantGetsAnswerBack(t *testing.T) {
+	addr, _, _ := startServer(t)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+	alice := connect(t, addr, "alice")
+	alice.joinAs(t, "Alice")
+
+	host.send(t, "\t\t")
+	host.send(t, "hello\r")
+	alice.waitFor(t, "AGENTREPLY-hello")
+	alice.send(t, "\t\t")
+	alice.send(t, "alice-first\r")
+	host.waitFor(t, "alice-first")
+
+	// The host flags Alice (host, Alice); she is told and her answer comes back.
+	host.send(t, "\x1b[Z") // back from the input to the participants list
+	host.send(t, "j")
+	host.send(t, "c")
+	host.waitFor(t, "revise")
+	alice.waitFor(t, "asked you to revise")
+
+	// She clears the box and drops while still flagged.
+	for i := 0; i < len("alice-first"); i++ {
+		alice.send(t, "\x7f")
+	}
+	alice.disconnect()
+
+	back := connect(t, addr, "alice") // same SSH user: no name prompt this time
+	back.waitFor(t, "asked you to revise")
+
+	// Her previous answer is in the response box: what she types is appended
+	// to it, and everyone sees the whole.
+	back.send(t, "\t\t") // transcript -> sidebar -> response
+	back.send(t, "-revised\r")
+	host.waitFor(t, "alice-first-revised")
 }
 
 // servers maps a server's address to its process, so a test can signal it.

@@ -173,6 +173,28 @@ func (c *Coordinator) handleParticipantEvent(msg *hub.Message) error {
 	round := c.round
 	c.mu.Unlock()
 	c.publishRoundState(round)
+	c.publishTranscriptSnapshot(msg.ID, round)
+	return nil
+}
+
+// publishTranscriptSnapshot catches the session with participant id up: the
+// recorded transcript, and that participant's last submission this round.
+// It is an ordinary broadcast addressed by To; the hub has no targeted send.
+func (c *Coordinator) publishTranscriptSnapshot(id string, round int) {
+	snapshot := hub.NewTranscriptSnapshot(round, id, c.Transcript(), c.LastSubmission(id))
+	c.hub.Send(context.Background(), snapshot)
+}
+
+// LastSubmission returns the latest response from the participant with id in
+// the current round, or nil when it has none.
+func (c *Coordinator) LastSubmission(id string) *hub.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, r := range c.responses[c.round] {
+		if senderID(r) == id {
+			return r
+		}
+	}
 	return nil
 }
 

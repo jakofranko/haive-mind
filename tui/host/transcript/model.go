@@ -19,6 +19,7 @@ type Model struct {
 	height   int
 	styles   Styles
 	active   bool
+	headLen  int // length of the welcome text at the start of content
 }
 
 type Styles struct {
@@ -52,10 +53,11 @@ func New() Model {
 	const welcome = "Welcome to Haive Mind Host TUI\nPress Tab to navigate panes"
 	vp.SetContent(welcome)
 
+	head := welcome + "\n"
 	return Model{
 		viewport: vp,
-		content: welcome + `
-`,
+		content:  head,
+		headLen:  len(head),
 		renderer: renderer,
 		styles:   defaultStyles(),
 	}
@@ -103,11 +105,7 @@ func (m *Model) layout() {
 }
 
 func (m *Model) addMessage(msg hub.Message) {
-	rendered := m.renderMarkdown(msg.Content)
-	content := fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
-		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
-
-	m.appendContent(content)
+	m.appendContent(m.format(msg))
 }
 
 // appendContent adds text to the full history and shows the newest end.
@@ -139,11 +137,28 @@ func (m *Model) SetSize(width, height int) {
 }
 
 func (m *Model) AddMessage(msg hub.Message) {
-	rendered := m.renderMarkdown(msg.Content)
-	content := fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
-		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
+	m.appendContent(m.format(msg))
+}
 
-	m.appendContent(content)
+func (m *Model) format(msg hub.Message) string {
+	rendered := m.renderMarkdown(msg.Content)
+	return fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
+		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
+}
+
+// PrependMessages puts older messages, oldest first, before every entry
+// already shown (after the welcome text), and shows the newest end.
+func (m *Model) PrependMessages(msgs []hub.Message) {
+	if len(msgs) == 0 {
+		return
+	}
+	var older string
+	for _, msg := range msgs {
+		older += m.format(msg)
+	}
+	m.content = m.content[:m.headLen] + older + m.content[m.headLen:]
+	m.viewport.SetContent(m.content)
+	m.viewport.GotoBottom()
 }
 
 func (m *Model) AddSystemMessage(content string) {

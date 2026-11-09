@@ -15,7 +15,7 @@ import (
 )
 
 // Event is something the hub told this session. It is one of MessageEvent,
-// ParticipantEvent, RoundEvent, RoundStateEvent or ExportEvent.
+// ParticipantEvent, RoundEvent, RoundStateEvent, SnapshotEvent or ExportEvent.
 type Event interface{ event() }
 
 // MessageEvent is a hub message passed through unchanged.
@@ -39,6 +39,17 @@ type RoundStateEvent struct {
 // Only a client created with hub.MessageTypeExportComplete receives it.
 type ExportEvent struct{ Path string }
 
+// SnapshotEvent is the transcript snapshot addressed to this session.
+// Messages are the recorded messages this session has not already been given
+// live, oldest first; a TUI puts them before everything it already shows.
+// LastSubmission is the participant's last submission for the current round,
+// or nil.
+type SnapshotEvent struct {
+	Messages       []hub.Message
+	LastSubmission *hub.Message
+}
+
+func (SnapshotEvent) event()    {}
 func (ExportEvent) event()      {}
 func (MessageEvent) event()     {}
 func (ParticipantEvent) event() {}
@@ -59,22 +70,29 @@ var transcriptTypes = []hub.MessageType{
 // Client is one session's subscription to the hub. Create it with New.
 type Client struct {
 	hub   hub.Hub
+	id    string // this session's participant id
 	inbox *inbox.Queue[Event]
 	ready chan struct{}
 
 	mu   sync.Mutex
 	subs []hub.Subscription
+
+	// seen holds the id of every message already delivered, live or through a
+	// snapshot, so a message reaching the session twice is delivered once.
+	seenMu sync.Mutex
+	seen   map[string]bool
 }
 
-// New subscribes to the hub and returns a client. extra lists message types
+// New subscribes to the hub and returns a client for the session with
+// participant id id (hub.HostID for the host). extra lists message types
 // beyond the common transcript ones that this role wants delivered (as
 // MessageEvents). Everything, in every type, arrives in the order the hub sent
 // it, because it all goes through one subscription.
-func New(h hub.Hub, extra ...hub.MessageType) *Client {
-	c := &Client{hub: h, inbox: inbox.New[Event](), ready: make(chan struct{})}
+func New(h hub.Hub, id string, extra ...hub.MessageType) *Client {
+	c := &Client{hub: h, id: id, inbox: inbox.New[Event](), seen: map[string]bool{}, ready: make(chan struct{})}
 
 	types := append([]hub.MessageType{}, transcriptTypes...)
-	types = append(types, hub.MessageTypeRoundState, hub.MessageTypeParticipantEvent, hub.MessageTypeRoundChange)
+	types = append(types, hub.MessageTypeRoundState, hub.MessageTypeParticipantEvent, hub.MessageTypeRoundChange, hub.MessageTypeTranscriptSnapshot)
 	types = append(types, extra...)
 
 	sub, err := h.SubscribeTypes(context.Background(), types, c.receive)
@@ -101,12 +119,42 @@ func (c *Client) receive(msg *hub.Message) error {
 		if round, ids, err := msg.RoundState(); err == nil {
 			c.inbox.Push(RoundStateEvent{Round: round, IDs: ids})
 		}
+	case hub.MessageTypeTranscriptSnapshot:
+		if msg.To != c.id {
+			return nil
+		}
+		if recorded, last, err := msg.TranscriptSnapshot(); err == nil {
+			ev := SnapshotEvent{LastSubmission: last}
+			for _, m := range recorded {
+				if c.firstSight(m.ID) {
+					ev.Messages = append(ev.Messages, *m)
+				}
+			}
+			c.inbox.Push(ev)
+		}
 	case hub.MessageTypeExportComplete:
 		c.inbox.Push(ExportEvent{Path: msg.Content})
 	default:
-		c.inbox.Push(MessageEvent{Message: *msg})
+		if c.firstSight(msg.ID) {
+			c.inbox.Push(MessageEvent{Message: *msg})
+		}
 	}
 	return nil
+}
+
+// firstSight records a message id and reports whether it is new to this
+// session. A message without an id is always new.
+func (c *Client) firstSight(id string) bool {
+	if id == "" {
+		return true
+	}
+	c.seenMu.Lock()
+	defer c.seenMu.Unlock()
+	if c.seen[id] {
+		return false
+	}
+	c.seen[id] = true
+	return true
 }
 
 func (c *Client) participantFor(msg *hub.Message) *hub.Participant {

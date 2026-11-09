@@ -12,7 +12,10 @@ import (
 	"jakofranko/haive-mind/tui/session"
 )
 
-const wait = 5 * time.Second
+const (
+	wait = 5 * time.Second
+	me   = "Agent-ann" // the participant id the test clients play
+)
 
 func startedHub(t *testing.T) hub.Hub {
 	t.Helper()
@@ -50,7 +53,7 @@ func next(t *testing.T, c *session.Client) session.Event {
 
 func newClient(t *testing.T, h hub.Hub, extra ...hub.MessageType) *session.Client {
 	t.Helper()
-	c := session.New(h, extra...)
+	c := session.New(h, me, extra...)
 	t.Cleanup(c.Close)
 	select {
 	case <-c.Ready():
@@ -188,7 +191,7 @@ func TestExtraTypesAreDeliveredOnlyToAClientThatAsks(t *testing.T) {
 
 func TestReadyMeansMessagesAreNowDelivered(t *testing.T) {
 	h := startedHub(t)
-	c := session.New(h)
+	c := session.New(h, me)
 	defer c.Close()
 	select {
 	case <-c.Ready():
@@ -258,7 +261,7 @@ func (c *countingHub) SubscribeTypes(ctx context.Context, ts []hub.MessageType, 
 
 func TestCloseUnsubscribesEverything(t *testing.T) {
 	ch := &countingHub{Hub: startedHub(t)}
-	c := session.New(ch)
+	c := session.New(ch, me)
 	if ch.subs.Load() == 0 {
 		t.Fatal("client made no subscriptions; test is not exercising anything")
 	}
@@ -276,7 +279,7 @@ func (failingHub) SubscribeTypes(context.Context, []hub.MessageType, func(*hub.M
 }
 
 func TestFailedSubscriptionClosesTheClient(t *testing.T) {
-	c := session.New(failingHub{Hub: startedHub(t)})
+	c := session.New(failingHub{Hub: startedHub(t)}, me)
 	defer c.Close()
 
 	select {

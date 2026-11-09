@@ -16,3 +16,4 @@ The hub is a pub/sub bus. Subscribers register for message types and receive the
 - Tests sit at three seams: the hub (`NewHub()` with a stub runner), the coordinator, and the TUI models with a real or fake hub, plus an e2e test against the real binary.
 - Ticket criteria written for the channel API (`hub.Aggregate`, `MarkConflict`, `ResolveConflict`) are retired; tickets #1 and #3 say what replaced them.
 - The hub has no targeted send. Messages go to all subscribers and a UI filters by `To`/`FromID` when it needs to.
+- History reaches a session as an addressed message: on connect the coordinator publishes a transcript snapshot with `To` set to that participant id, not as a hub replay.
