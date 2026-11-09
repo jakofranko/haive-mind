@@ -3,9 +3,9 @@
 │Welcome to Haive Mind Host TUI││                        │              
 │Press Tab to navigate panes   │╰────────────────────────╯              
 │                              │╭───────────────────────────────────────
-│                              │─────╮                                  
-│                              ││ Directive (Enter=Send,                
-│                              │Ctrl+Enter=Newline) │                   
+│                              │─╮                                      
+│                              ││ Directive (Enter=Send, Ctrl+J=Newline)
+│                              ││                                       
 │                              ││┃ Type directive here...               
 │                              ││                                       
 │                              ││┃                                      
@@ -13,12 +13,12 @@
 │                              ││┃                                      
 │                              ││                                       
 │                              │╰───────────────────────────────────────
-│                              │─────╯                                  
+│                              │─╯                                      
 │                              │╭───────────────────────────────────────
 │                              │────────────────╮                       
 │                              ││ Controls                              
 │                              ││                                       
-│                              ││  [Aggregate]     [Send]     [New      
-╰──────────────────────────────╯Round]     [Export]  │                  
+│                              ││ [Aggregate]  [Send]  [New Round]      
+╰──────────────────────────────╯[Export]  [Resolve] │                   
                                 ╰───────────────────────────────────────
                                 ────────────────╯                       

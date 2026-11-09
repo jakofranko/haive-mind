@@ -37,10 +37,10 @@ func defaultStyles() Styles {
 			Foreground(lipgloss.Color("39")).
 			Padding(0, 1),
 		button: lipgloss.NewStyle().
-			Padding(0, 2).
+			Padding(0, 1).
 			Foreground(lipgloss.Color("240")),
 		buttonActive: lipgloss.NewStyle().
-			Padding(0, 2).
+			Padding(0, 1).
 			Background(lipgloss.Color("39")).
 			Foreground(lipgloss.Color("0")),
 	}
@@ -48,7 +48,7 @@ func defaultStyles() Styles {
 
 func New() Model {
 	return Model{
-		buttons:     []string{"[Aggregate]", "[Send]", "[New Round]", "[Export]"},
+		buttons:     []string{"[Aggregate]", "[Send]", "[New Round]", "[Export]", "[Resolve]"},
 		buttonIndex: 0,
 		styles:      defaultStyles(),
 	}
@@ -101,7 +101,7 @@ func (m Model) View() string {
 		btns = append(btns, btnStyle.Render(label))
 	}
 
-	content := strings.Join(btns, " ")
+	content := strings.Join(btns, "")
 	return border.Render(title + "\n" + content)
 }
 

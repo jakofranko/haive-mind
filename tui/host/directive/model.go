@@ -46,7 +46,7 @@ func New() Model {
 	input.Placeholder = "Type directive here..."
 	input.Focus()
 	input.KeyMap.InsertNewline.SetEnabled(true)
-	input.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("ctrl+enter"))
+	input.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("ctrl+j", "alt+enter"))
 	input.ShowLineNumbers = false
 
 	return Model{
@@ -96,7 +96,7 @@ func (m Model) View() string {
 		border = m.styles.activeBorder
 	}
 
-	title := m.styles.title.Render("Directive (Enter=Send, Ctrl+Enter=Newline)")
+	title := m.styles.title.Render("Directive (Enter=Send, Ctrl+J=Newline)")
 	content := m.input.View()
 	return border.Render(title + "\n" + content)
 }

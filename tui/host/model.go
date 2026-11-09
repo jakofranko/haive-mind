@@ -2,6 +2,8 @@ package host
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"jakofranko/haive-mind/tui/host/participants"
 	"jakofranko/haive-mind/tui/host/toast"
 	"jakofranko/haive-mind/tui/host/transcript"
+	"jakofranko/haive-mind/tui/inbox"
 )
 
 const (
@@ -46,15 +49,19 @@ type AppModel struct {
 	namePrompt       textinput.Model
 	namePromptActive bool
 
+	// draftingAggregate is true while the directive input holds a synthesized
+	// aggregate for the host to edit; Enter then sends it as the aggregate.
+	draftingAggregate bool
+
 	// Subscriptions
 	subscriptions []hub.Subscription
 
 	// Internal channels for hub message forwarding
-	msgCh             chan *hub.Message
-	participantCh     chan *hub.Participant
-	roundCh           chan int
-	exportCompleteCh  chan string
-	errorCh           chan error
+	msgCh            *inbox.Queue[*hub.Message]
+	participantCh    *inbox.Queue[*hub.Participant]
+	roundCh          *inbox.Queue[int]
+	exportCompleteCh *inbox.Queue[string]
+	errorCh          *inbox.Queue[error]
 
 	// Synchronization
 	subscriptionsReady chan struct{}
@@ -68,26 +75,26 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 	namePrompt.Prompt = "> "
 	namePrompt.Width = 40
 
-m := &AppModel{
-		hub:                 hubChans,
-		activePane:          paneTranscript,
-		round:               1,
-		yourName:            "Host",
-		sshUsername:         "host",
-		transcript:          transcript.New(),
-		participants:        participants.New(),
-		directive:           directive.New(),
-		buttons:             buttons.New(),
-		toast:               toast.New(),
-		namePrompt:          namePrompt,
-		namePromptActive:    false,
-		subscriptions:       make([]hub.Subscription, 0),
-		msgCh:               make(chan *hub.Message, 100),
-		participantCh:       make(chan *hub.Participant, 100),
-		roundCh:             make(chan int, 10),
-		exportCompleteCh:    make(chan string, 10),
-		errorCh:             make(chan error, 10),
-		subscriptionsReady:  make(chan struct{}),
+	m := &AppModel{
+		hub:                hubChans,
+		activePane:         paneTranscript,
+		round:              1,
+		yourName:           "Host",
+		sshUsername:        "host",
+		transcript:         transcript.New(),
+		participants:       participants.New(),
+		directive:          directive.New(),
+		buttons:            buttons.New(),
+		toast:              toast.New(),
+		namePrompt:         namePrompt,
+		namePromptActive:   false,
+		subscriptions:      make([]hub.Subscription, 0),
+		msgCh:              inbox.New[*hub.Message](),
+		participantCh:      inbox.New[*hub.Participant](),
+		roundCh:            inbox.New[int](),
+		exportCompleteCh:   inbox.New[string](),
+		errorCh:            inbox.New[error](),
+		subscriptionsReady: make(chan struct{}),
 	}
 
 	// Check if we have a stored display name
@@ -100,6 +107,15 @@ m := &AppModel{
 	}
 
 	return m
+}
+
+// Close releases every hub subscription this model made. Call it when the
+// session ends so the hub stops delivering to a model nobody is reading.
+func (m *AppModel) Close() {
+	for _, sub := range m.subscriptions {
+		sub.Unsubscribe()
+	}
+	m.subscriptions = nil
 }
 
 func (m *AppModel) Init() tea.Cmd {
@@ -142,35 +158,35 @@ type initialParticipantsMsg []*hub.Participant
 
 func (m *AppModel) listenForMessages() tea.Cmd {
 	return func() tea.Msg {
-		msg := <-m.msgCh
+		msg := m.msgCh.Pop()
 		return hubMessageMsg(*msg)
 	}
 }
 
 func (m *AppModel) listenForParticipants() tea.Cmd {
 	return func() tea.Msg {
-		p := <-m.participantCh
+		p := m.participantCh.Pop()
 		return participantUpdateMsg(p)
 	}
 }
 
 func (m *AppModel) listenForRounds() tea.Cmd {
 	return func() tea.Msg {
-		round := <-m.roundCh
+		round := m.roundCh.Pop()
 		return roundChangedMsg(round)
 	}
 }
 
 func (m *AppModel) listenForExportComplete() tea.Cmd {
 	return func() tea.Msg {
-		path := <-m.exportCompleteCh
+		path := m.exportCompleteCh.Pop()
 		return exportCompleteMsg(path)
 	}
 }
 
 func (m *AppModel) listenForErrors() tea.Cmd {
 	return func() tea.Msg {
-		err := <-m.errorCh
+		err := m.errorCh.Pop()
 		return errorMsg(err)
 	}
 }
@@ -184,48 +200,21 @@ type errorMsg error
 func (m *AppModel) setupSubscriptions() tea.Cmd {
 	ctx := context.Background()
 
-	// Subscribe to messages (directive, response, system, aggregate, etc.)
-	sub, err := m.hub.Subscribe(ctx, hub.MessageTypeDirective, func(msg *hub.Message) error {
-		select {
-		case m.msgCh <- msg:
-		default:
+	// Transcript traffic arrives through one subscription so that messages of
+	// different types keep the order they were sent in.
+	sub, err := m.hub.SubscribeTypes(ctx, []hub.MessageType{
+		hub.MessageTypeDirective,
+		hub.MessageTypeResponse,
+		hub.MessageTypeSystem,
+		hub.MessageTypeAggregate,
+		hub.MessageTypeAggregateDraft,
+		hub.MessageTypeAgentError,
+		hub.MessageTypeConflictUpdate,
+	}, func(msg *hub.Message) error {
+		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
+			return nil // a signal to the coordinator, not transcript content
 		}
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
-	}
-
-	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeResponse, func(msg *hub.Message) error {
-		select {
-		case m.msgCh <- msg:
-		default:
-		}
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
-	}
-
-	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeSystem, func(msg *hub.Message) error {
-		select {
-		case m.msgCh <- msg:
-		default:
-		}
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
-	}
-
-	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeAggregate, func(msg *hub.Message) error {
-		// Skip aggregate_request signals
-		if msg.Content != "aggregate_request" {
-			select {
-			case m.msgCh <- msg:
-			default:
-			}
-		}
+		m.msgCh.Push(msg)
 		return nil
 	})
 	if err == nil {
@@ -236,10 +225,7 @@ func (m *AppModel) setupSubscriptions() tea.Cmd {
 	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeParticipantEvent, func(msg *hub.Message) error {
 		p := m.parseParticipantEvent(msg)
 		if p != nil {
-			select {
-			case m.participantCh <- p:
-			default:
-			}
+			m.participantCh.Push(p)
 		}
 		return nil
 	})
@@ -249,10 +235,7 @@ func (m *AppModel) setupSubscriptions() tea.Cmd {
 
 	// Subscribe to round changes
 	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeRoundChange, func(msg *hub.Message) error {
-		select {
-		case m.roundCh <- msg.Round:
-		default:
-		}
+		m.roundCh.Push(msg.Round)
 		return nil
 	})
 	if err == nil {
@@ -261,10 +244,7 @@ func (m *AppModel) setupSubscriptions() tea.Cmd {
 
 	// Subscribe to export complete
 	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeExportComplete, func(msg *hub.Message) error {
-		select {
-		case m.exportCompleteCh <- msg.Content:
-		default:
-		}
+		m.exportCompleteCh.Push(msg.Content)
 		return nil
 	})
 	if err == nil {
@@ -282,6 +262,11 @@ func (m *AppModel) handleMessage(msg *hub.Message) error {
 }
 
 func (m *AppModel) parseParticipantEvent(msg *hub.Message) *hub.Participant {
+	// The hub has already forgotten a participant who disconnected, so there is
+	// nothing to look up: the event itself says who to remove.
+	if msg.Content == hub.ParticipantEventDisconnect {
+		return &hub.Participant{Name: msg.ID, Status: hub.StatusDisconnected, Round: msg.Round, Event: msg.Content}
+	}
 	participants := m.hub.GetParticipants()
 	for _, p := range participants {
 		if p.Name == msg.ID {
@@ -328,7 +313,20 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
+		if msg.Type == hub.MessageTypeConflictUpdate {
+			var ids []string
+			if json.Unmarshal([]byte(msg.Content), &ids) == nil {
+				m.participants.SetFlagged(ids)
+			}
+			return m, m.listenForMessages()
+		}
+		if msg.Type == hub.MessageTypeAgentError {
+			return m, tea.Batch(m.showAgentError(hub.Message(msg)), m.listenForMessages())
+		}
 		m.transcript.AddMessage(hub.Message(msg))
+		if msg.Type == hub.MessageTypeAggregateDraft {
+			m.openDraft(msg.Content)
+		}
 		cmds = append(cmds, m.listenForMessages())
 		return m, tea.Batch(cmds...)
 
@@ -367,6 +365,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 
+	if updated, cmd := m.toast.Update(msg); true {
+		m.toast = updated.(toast.Model)
+		cmds = append(cmds, cmd)
+	}
 	cmds = append(cmds, m.forwardToFocused(msg)...)
 	return m, tea.Batch(cmds...)
 }
@@ -495,6 +497,11 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch m.activePane {
 	case paneDirective:
+		if keyStr == "esc" && m.draftingAggregate {
+			m.draftingAggregate = false
+			m.directive.Reset()
+			return m, nil
+		}
 		if keyStr == "enter" && !isCtrlPressed(msg) {
 			return m.handleDirectiveSend()
 		}
@@ -528,6 +535,12 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case paneParticipants:
+		if keyStr == "c" {
+			return m.toggleFlag()
+		}
+		if model, _ := m.participants.Update(msg); true {
+			m.participants = model.(participants.Model)
+		}
 		return m, nil
 	}
 
@@ -551,23 +564,41 @@ func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	msg := hub.NewMessage(hub.MessageTypeDirective, m.yourName, content, m.round)
+	msgType := hub.MessageTypeDirective
+	if m.draftingAggregate {
+		msgType = hub.MessageTypeAggregate
+		m.draftingAggregate = false
+	}
+	msg := hub.NewMessage(msgType, m.yourName, content, m.round)
 	m.hub.Send(context.Background(), msg)
 
 	m.directive.Reset()
 	return m, m.directive.Focus()
 }
 
+// openDraft puts a synthesized aggregate in the input for the host to edit.
+func (m *AppModel) openDraft(content string) {
+	m.draftingAggregate = true
+	m.directive.SetValue(content)
+	m.activePane = paneDirective
+	m.updateActiveStates()
+}
+
 func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 	activeBtn := m.buttons.ActiveButton()
 	switch activeBtn {
 	case "[Aggregate]":
+		if n := m.participants.FlaggedCount(); n > 0 {
+			return m, m.confirmAggregate(n)
+		}
 		m.hub.RequestAggregate(m.round)
 	case "[Send]":
 		return m.handleDirectiveSend()
 	case "[New Round]":
-		m.round++
-		m.hub.StartRound(m.round)
+		// The coordinator owns the round number; we adopt it on RoundChange.
+		m.hub.StartRound(m.round + 1)
+	case "[Resolve]":
+		m.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeConflictResolve, "host", "", m.round))
 	case "[Export]":
 		exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
 		m.hub.Export(exportPath)
@@ -629,4 +660,57 @@ func (m *AppModel) namePromptView() string {
 	prompt := promptStyle.Render("Enter display name:\n\n" + m.namePrompt.View())
 
 	return lipgloss.JoinVertical(lipgloss.Center, title, prompt)
+}
+
+// showAgentError raises a toast for a failed agent call; Retry sends the failed
+// message through the hub again.
+func (m *AppModel) showAgentError(failed hub.Message) tea.Cmd {
+	var retry func() tea.Cmd
+	if failed.Retry != nil {
+		again := *failed.Retry
+		round := failed.Round
+		retry = func() tea.Cmd {
+			return func() tea.Msg {
+				if err := m.hub.Send(context.Background(), hub.NewMessage(again.Type, "host", again.Content, round)); err != nil {
+					return errorMsg(err)
+				}
+				return nil
+			}
+		}
+	}
+	return toast.ShowToast(failed.Content, true, retry)
+}
+
+// toggleFlag asks the coordinator to flag (or unflag) the selected
+// participant. The host cannot flag themselves.
+func (m *AppModel) toggleFlag() (tea.Model, tea.Cmd) {
+	p, ok := m.participants.Selected()
+	if !ok || p.Name == "host" {
+		return m, nil
+	}
+	action := "flag"
+	if m.participants.IsFlagged(p.Name) {
+		action = "unflag"
+	}
+	msg := hub.NewMessage(hub.MessageTypeConflictFlag, "host", action, m.round)
+	msg.To = p.Name
+	m.hub.Send(context.Background(), msg)
+	return m, nil
+}
+
+// confirmAggregate warns that participants are still flagged and offers to
+// aggregate anyway.
+func (m *AppModel) confirmAggregate(flagged int) tea.Cmd {
+	who := "participant is"
+	if flagged != 1 {
+		who = "participants are"
+	}
+	text := fmt.Sprintf("%d %s still flagged for revision. Aggregate anyway?", flagged, who)
+	round := m.round
+	return toast.ShowAction(text, "Continue", func() tea.Cmd {
+		return func() tea.Msg {
+			m.hub.RequestAggregate(round)
+			return nil
+		}
+	})
 }

@@ -3,9 +3,9 @@
 │Welcome to Haive Mind Participant TUI││Agent-1  idle           │ 
 │Waiting for messages...              │╰────────────────────────╯ 
 │                                     │╭──────────────────────────
-│                                     │───────────────────╮       
+│                                     │───────────────╮           
 │                                     ││ Response (Enter=Submit,  
-│                                     │Ctrl+Enter=Newline) │      
+│                                     │Ctrl+J=Newline) │          
 │                                     ││┃ Type your response...   
 │                                     ││                          
 │                                     ││┃                         
@@ -21,4 +21,4 @@
 │                                     ││┃                         
 ╰─────────────────────────────────────╯│                          
                                        ╰──────────────────────────
-                                       ───────────────────╯       
+                                       ───────────────╯           

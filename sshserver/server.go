@@ -39,8 +39,6 @@ func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 		log.Printf("Failed to subscribe to participant events: %v", err)
 	}
 
-	go mgr.broadcastLoop()
-
 	opts := []ssh.Option{
 		wish.WithAddress(":" + port),
 		wish.WithMiddleware(
@@ -62,6 +60,7 @@ func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 
 type trackedSession struct {
 	program  *tea.Program
+	model    interface{ Close() }
 	cancel   context.CancelFunc
 	username string
 	isHost   bool
@@ -81,7 +80,10 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	isHost := !m.hostConnected
 	m.mu.Unlock()
 
-	var model tea.Model
+	var model interface {
+		tea.Model
+		Close()
+	}
 	var name string
 	var sshUsername string
 
@@ -96,10 +98,11 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	program := tea.NewProgram(model, bubbletea.MakeOptions(s)...)
+	program := tea.NewProgram(model, append(bubbletea.MakeOptions(s), tea.WithoutSignalHandler())...) // the server, not each session, handles Ctrl+C
 
 	session := &trackedSession{
 		program:  program,
+		model:    model,
 		cancel:   cancel,
 		username: sshUsername,
 		isHost:   isHost,
@@ -137,6 +140,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 
 func (m *sessionManager) trackSession(ctx context.Context, session *trackedSession) {
 	session.program.Wait()
+	session.model.Close()
 
 	m.mu.Lock()
 	if session.isHost {
@@ -150,23 +154,5 @@ func (m *sessionManager) trackSession(ctx context.Context, session *trackedSessi
 	// Unregister participant from hub
 	if err := m.hub.UnregisterParticipant(session.name); err != nil {
 		log.Printf("Failed to unregister participant: %v", err)
-	}
-}
-
-func (m *sessionManager) broadcastLoop() {
-	for msg := range m.hub.Outbound() {
-		m.mu.Lock()
-		programs := make([]*tea.Program, 0, len(m.participantSessions)+1)
-		if m.hostSession != nil {
-			programs = append(programs, m.hostSession.program)
-		}
-		for _, s := range m.participantSessions {
-			programs = append(programs, s.program)
-		}
-		m.mu.Unlock()
-
-		for _, p := range programs {
-			p.Send(*msg)
-		}
 	}
 }

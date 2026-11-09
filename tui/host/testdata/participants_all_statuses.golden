@@ -1,12 +1,12 @@
 ╭──────────────────────────────╮╭────────────────────────╮                                  
 │ Transcript                   ││ Participants (Round 0) │                                  
-│Welcome to Haive Mind Host TUI││ Agent-1  idle          │                                  
-│Press Tab to navigate panes   ││ Agent-2  typing        │                                  
-│                              ││ Agent-3  submitted     │                                  
-│                              ││ Agent-4  ready         │                                  
+│Welcome to Haive Mind Host TUI││   Agent-1  idle        │                                  
+│Press Tab to navigate panes   ││   Agent-2  typing      │                                  
+│                              ││   Agent-3  submitted   │                                  
+│                              ││   Agent-4  ready       │                                  
 │                              │╰────────────────────────╯                                  
 │                              │╭────────────────────────────────────────────────────────╮  
-│                              ││ Directive (Enter=Send, Ctrl+Enter=Newline)             │  
+│                              ││ Directive (Enter=Send, Ctrl+J=Newline)                 │  
 │                              ││┃ Type directive here...                                │  
 │                              ││┃                                                       │  
 │                              ││┃                                                       │  
@@ -17,7 +17,7 @@
 │                              │╰────────────────────────────────────────────────────────╯  
 │                              │╭───────────────────────────────────────────────────────╮   
 │                              ││ Controls                                              │   
-│                              ││  [Aggregate]     [Send]     [New Round]     [Export]  │   
+│                              ││ [Aggregate]  [Send]  [New Round]  [Export]  [Resolve] │   
 │                              │╰───────────────────────────────────────────────────────╯   
 │                              │                                                            
 │                              │                                                            

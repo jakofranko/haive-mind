@@ -15,6 +15,7 @@ type Model struct {
 	styles    Styles
 	timeout   time.Duration
 	retryFunc func() tea.Cmd
+	action    string // label of the confirm button
 }
 
 type Styles struct {
@@ -66,13 +67,20 @@ type showToastMsg struct {
 	message   string
 	isError   bool
 	retryFunc func() tea.Cmd
+	action    string // label of the confirm button
 }
 
 type hideToastMsg struct{}
 
 func ShowToast(message string, isError bool, retryFunc func() tea.Cmd) tea.Cmd {
+	return ShowAction(message, "Retry", retryFunc)
+}
+
+// ShowAction shows a toast whose confirm button carries the given label; Enter
+// runs fn, Esc dismisses. With a nil fn it is a plain message.
+func ShowAction(message, action string, retryFunc func() tea.Cmd) tea.Cmd {
 	return func() tea.Msg {
-		return showToastMsg{message: message, isError: isError, retryFunc: retryFunc}
+		return showToastMsg{message: message, isError: retryFunc != nil, action: action, retryFunc: retryFunc}
 	}
 }
 
@@ -92,6 +100,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.message = msg.message
 		m.visible = true
 		m.retryFunc = msg.retryFunc
+		m.action = msg.action
 		return m, tea.Tick(m.timeout, func(t time.Time) tea.Msg {
 			return hideToastMsg{}
 		})
@@ -138,7 +147,7 @@ func (m Model) View() string {
 	var content string
 	if m.retryFunc != nil {
 		btnStyle := m.styles.button
-		content = style.Render(m.message + "\n\n" + btnStyle.Render("[Retry]  [Dismiss]"))
+		content = style.Render(m.message + "\n\n" + btnStyle.Render("[" + m.action + "]  [Dismiss]"))
 	} else {
 		content = style.Render(m.message)
 	}
