@@ -14,6 +14,7 @@ import (
 type Model struct {
 	viewport viewport.Model
 	content  string // full history; viewport.View() only returns the visible lines
+	header   int    // length of the welcome text at the start of content; older entries go after it
 	renderer *glamour.TermRenderer
 	width    int
 	height   int
@@ -57,8 +58,8 @@ func New() Model {
 
 	return Model{
 		viewport: vp,
-		content: welcome + `
-`,
+		content:  welcome + "\n",
+		header:   len(welcome) + 1,
 		renderer: renderer,
 		styles:   defaultStyles(),
 	}
@@ -145,6 +146,23 @@ func (m *Model) AddMessage(msg hub.Message) {
 		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
 
 	m.appendContent(content)
+}
+
+// PrependMessages shows messages older than everything already in the
+// transcript, oldest first, just after the welcome text.
+func (m *Model) PrependMessages(msgs []hub.Message) {
+	var older string
+	for _, msg := range msgs {
+		older += m.format(msg)
+	}
+	m.content = m.content[:m.header] + older + m.content[m.header:]
+	m.viewport.SetContent(m.content)
+	m.viewport.GotoBottom()
+}
+
+func (m *Model) format(msg hub.Message) string {
+	return fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
+		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, m.renderMarkdown(msg.Content))
 }
 
 func (m *Model) AddSystemMessage(content string) {

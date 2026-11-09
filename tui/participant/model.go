@@ -158,6 +158,11 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 	switch ev := ev.(type) {
 	case session.MessageEvent:
 		m.transcript.AddMessage(ev.Message)
+	case session.SnapshotEvent:
+		m.transcript.PrependMessages(ev.Messages)
+		if ev.LastSubmission != nil {
+			m.lastSubmitted = ev.LastSubmission.Content
+		}
 	case session.ParticipantEvent:
 		if ev.Participant.Status == hub.StatusDisconnected {
 			m.sidebar.RemoveParticipant(ev.Participant.ID)
