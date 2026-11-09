@@ -2,6 +2,7 @@ package participant
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -30,6 +31,8 @@ type ParticipantModel struct {
 	round       int
 	id          string // stable hub identity (set by the SSH server); never changes
 	yourName    string // display name
+	lastSubmitted string // what they last sent, offered back when the host asks for a revision
+	flaggedSelf   bool   // the host currently has this participant flagged
 	status      hub.ParticipantStatus
 	sshUsername string
 
@@ -185,6 +188,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 		hub.MessageTypeSystem,
 		hub.MessageTypeAggregate,
 		hub.MessageTypeAggregateDraft,
+		hub.MessageTypeConflictUpdate,
 	}, func(msg *hub.Message) error {
 		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
 			return nil // a signal to the coordinator, not transcript content
@@ -265,6 +269,10 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
+		if msg.Type == hub.MessageTypeConflictUpdate {
+			m.applyFlags(msg.Content)
+			return m, m.listenForMessages()
+		}
 		m.transcript.AddMessage(hub.Message(msg))
 		cmds = append(cmds, m.listenForMessages())
 		return m, tea.Batch(cmds...)
@@ -423,6 +431,8 @@ func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
 	}
 
 	msg := hub.NewMessage(hub.MessageTypeResponse, m.yourName, content, m.round)
+	msg.FromID = m.id
+	m.lastSubmitted = content
 	m.hub.Send(context.Background(), msg)
 	m.setStatus(hub.StatusSubmitted)
 	m.hub.SetDraft(m.id, "")
@@ -518,4 +528,34 @@ func (m *ParticipantModel) SetYourName(name string) {
 // SubscriptionsReady returns a channel that closes when subscriptions are registered
 func (m *ParticipantModel) SubscriptionsReady() <-chan struct{} {
 	return m.subscriptionsReady
+}
+
+// applyFlags handles the coordinator's announcement of who the host has asked
+// to revise. When this participant newly becomes flagged they are told, their
+// last answer comes back for editing (unless they are already typing), and
+// they are idle again.
+func (m *ParticipantModel) applyFlags(content string) {
+	var ids []string
+	if json.Unmarshal([]byte(content), &ids) != nil {
+		return
+	}
+	m.sidebar.SetFlagged(ids)
+
+	flagged := false
+	for _, id := range ids {
+		if id == m.id {
+			flagged = true
+		}
+	}
+	newlyFlagged := flagged && !m.flaggedSelf
+	m.flaggedSelf = flagged
+	if !newlyFlagged {
+		return
+	}
+	m.transcript.AddSystemMessage("The host asked you to revise your response.")
+	if strings.TrimSpace(m.response.Value()) == "" && m.lastSubmitted != "" {
+		m.response.SetValue(m.lastSubmitted)
+		m.hub.SetDraft(m.id, m.lastSubmitted)
+	}
+	m.setStatus(hub.StatusIdle)
 }

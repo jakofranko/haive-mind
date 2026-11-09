@@ -16,6 +16,7 @@ type Model struct {
 	styles       Styles
 	active       bool
 	round        int
+	flagged      map[string]bool // ids the host asked to revise
 	yourName     string
 }
 
@@ -111,6 +112,9 @@ func (m Model) View() string {
 	for _, p := range m.participants {
 		statusStyle := m.styles.statusStyles[p.Status]
 		status := statusStyle.Render(string(p.Status))
+		if m.flagged[p.Name] {
+			status = lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true).Render("revise")
+		}
 
 		displayName := p.DisplayName
 		if displayName == "" {
@@ -173,4 +177,12 @@ func (m *Model) SetYourName(name string) {
 
 func (m *Model) GetParticipants() []hub.Participant {
 	return m.participants
+}
+
+// SetFlagged marks the participants the host has asked to revise.
+func (m *Model) SetFlagged(ids []string) {
+	m.flagged = make(map[string]bool, len(ids))
+	for _, id := range ids {
+		m.flagged[id] = true
+	}
 }
