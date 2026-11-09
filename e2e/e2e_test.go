@@ -182,6 +182,7 @@ func startServerWith(t *testing.T, flags, env []string) (addr, dataDir, agentLog
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"FAKE_AGENT_LOG="+agentLog)
 	cmd.Env = append(cmd.Env, env...)
+	prepareInterruptable(cmd)
 	cmd.Stdout, cmd.Stderr = &logs, &logs
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -197,6 +198,7 @@ func startServerWith(t *testing.T, flags, env []string) (addr, dataDir, agentLog
 	})
 
 	addr = "127.0.0.1:" + port
+	servers.Store(addr, cmd)
 	for i := 0; i < 100; i++ {
 		if c, err := net.Dial("tcp", addr); err == nil {
 			c.Close()
@@ -444,5 +446,61 @@ func TestHostAsksForARevision(t *testing.T) {
 	}
 	if strings.Contains(synthesis, "Alice: alice-first\n") || strings.HasSuffix(synthesis, "Alice: alice-first") {
 		t.Errorf("synthesis still has Alice's superseded answer: %s", synthesis)
+	}
+}
+
+// servers maps a server's address to its process, so a test can signal it.
+var servers sync.Map
+
+// #30: Ctrl+C / SIGTERM tells connected users the session ended, saves the
+// transcript to --data-dir, and exits on its own.
+func TestGracefulShutdownSavesTranscript(t *testing.T) {
+	addr, dataDir, _ := startServer(t)
+	proc, _ := servers.Load(addr)
+	cmd := proc.(*exec.Cmd)
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+	alice := connect(t, addr, "alice")
+	alice.joinAs(t, "Alice")
+	host.send(t, "\t\t")
+	host.send(t, "hello\r")
+	alice.waitFor(t, "AGENTREPLY-hello")
+
+	if err := interrupt(cmd); err != nil {
+		t.Skipf("cannot signal the server on this machine: %v", err)
+	}
+
+	alice.waitFor(t, "Session ended")
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("server exited with an error: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("server did not exit after the interrupt")
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dataDir, "transcript.json"))
+	if err != nil {
+		t.Fatalf("no transcript saved on shutdown: %v", err)
+	}
+	var doc struct {
+		Messages []struct{ Content string }
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("saved transcript is not valid JSON: %v", err)
+	}
+	found := false
+	for _, m := range doc.Messages {
+		if strings.Contains(m.Content, "AGENTREPLY-hello") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("saved transcript lacks the session's messages: %s", raw)
 	}
 }

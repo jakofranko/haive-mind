@@ -98,7 +98,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	program := tea.NewProgram(model, bubbletea.MakeOptions(s)...)
+	program := tea.NewProgram(model, append(bubbletea.MakeOptions(s), tea.WithoutSignalHandler())...) // the server, not each session, handles Ctrl+C
 
 	session := &trackedSession{
 		program:  program,
