@@ -8,6 +8,7 @@ Judgement calls for review. Formatting, `go vet` and the race detector are enfor
 - **Assert on what a user sees**: strip terminal styling (`visible()`) before matching text. Golden files hold styled bytes; regenerate with `-update` and confirm the diff is only the lines you meant to change.
 - **Wait for the outcome**: poll with `eventually`, `waitFor` or `eventuallyDrawn`, with deadlines sized for a loaded machine. Use a fixed sleep only to let a "nothing else happens" check settle.
 - **Observe a running Bubble Tea program through its drawn output**, never its model fields, so the test and the program do not touch the same state from two goroutines.
+- **Give a hub a stub runner (`SetAgentRunner`/`SetSynthesizer`) when a test sends a directive or aggregate.** `NewHub()` has no runner of its own, so nothing in a test can launch the real `opencode`.
 - **Show red first**: a new test fails for the stated reason before the code that fixes it; break the fix once to confirm the test can fail.
 
 ## Design
