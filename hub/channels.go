@@ -22,8 +22,8 @@ type Hub interface {
 	RegisterParticipant(p *Participant) error
 	UpdateParticipantStatus(name string, status ParticipantStatus) error
 	UnregisterParticipant(name string) error
-	GetDisplayName(name string) string
-	SetDisplayName(name, displayName string)
+	GetDisplayName(id string) string
+	SetDisplayName(id, displayName string)
 	SetDraft(name, text string)
 	GetDraft(name string) string
 	SetAgentRunner(runner agent.Runner)

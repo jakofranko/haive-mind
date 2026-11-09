@@ -14,7 +14,7 @@ import (
 
 func TestAppModel_Init(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	assert.NotNil(t, model)
@@ -35,7 +35,7 @@ func TestAppModel_Init_NamePrompt(t *testing.T) {
 
 func TestAppModel_Update_WindowSize(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	msg := tea.WindowSizeMsg{Width: 120, Height: 40}
@@ -47,7 +47,7 @@ func TestAppModel_Update_WindowSize(t *testing.T) {
 
 func TestAppModel_Update_TabNavigation(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Initial pane should be transcript
@@ -76,7 +76,7 @@ func TestAppModel_Update_TabNavigation(t *testing.T) {
 
 func TestAppModel_Update_ShiftTabNavigation(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Shift+Tab from transcript should go to buttons
@@ -92,7 +92,7 @@ func TestAppModel_Update_ShiftTabNavigation(t *testing.T) {
 
 func TestAppModel_HandleDirectiveSend(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Set directive content via textarea
@@ -109,7 +109,7 @@ func TestAppModel_HandleDirectiveSend(t *testing.T) {
 
 func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Set directive content
@@ -127,7 +127,7 @@ func TestAppModel_HandleButtonPress_Send(t *testing.T) {
 
 func TestAppModel_AddMessage(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Set viewport dimensions so View() works
@@ -144,7 +144,7 @@ func TestAppModel_AddMessage(t *testing.T) {
 
 func TestAppModel_UpdateParticipant_Upsert(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Add new participant (join)
@@ -169,7 +169,7 @@ func TestAppModel_UpdateParticipant_Upsert(t *testing.T) {
 
 func TestAppModel_RemoveParticipant(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Add participants
@@ -190,7 +190,7 @@ func TestAppModel_RemoveParticipant(t *testing.T) {
 
 func TestAppModel_View_RendersWithoutPanic(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	// Simulate window size
@@ -209,7 +209,7 @@ func TestAppModel_View_RendersWithoutPanic(t *testing.T) {
 
 func TestAppModel_CtrlEnterInDirective(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.activePane = paneDirective
@@ -241,12 +241,12 @@ func TestAppModel_NamePrompt_Flow(t *testing.T) {
 	assert.False(t, model.namePromptActive)
 	assert.Equal(t, paneTranscript, model.activePane)
 	assert.Equal(t, "John Doe", model.yourName)
-	assert.Equal(t, "John Doe", hubChans.GetDisplayName("host"))
+	assert.Equal(t, "John Doe", hubChans.GetDisplayName(hub.HostID))
 }
 
 func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.activePane = paneButtons
@@ -267,7 +267,7 @@ func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
 // both presses name the round the host shows.
 func TestAppModel_NewRound_DoublePressAdvancesOnce(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	coord := coordinator.New(hubChans)
 	assert.NoError(t, coord.Start(context.Background()))
 	assert.NoError(t, hubChans.Start())

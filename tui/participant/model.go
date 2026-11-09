@@ -33,7 +33,6 @@ type ParticipantModel struct {
 	lastSubmitted string // what they last sent, offered back when the host asks for a revision
 	flaggedSelf   bool   // the host currently has this participant flagged
 	status        hub.ParticipantStatus
-	sshUsername   string
 
 	transcript transcript.Model
 	sidebar    sidebar.Model
@@ -61,7 +60,6 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 		id:               yourName,
 		status:           hub.StatusIdle,
 		yourName:         yourName,
-		sshUsername:      sshUsername,
 		transcript:       transcript.New(),
 		sidebar:          sidebar.New(),
 		response:         response.New(),
@@ -81,7 +79,7 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 	})
 
 	// Check if we have a stored display name
-	if displayName := hubChans.GetDisplayName(sshUsername); displayName != "" {
+	if displayName := hubChans.GetDisplayName(m.id); displayName != "" {
 		m.yourName = displayName
 		m.sidebar.SetYourName(displayName)
 		m.sidebar.SetParticipants([]hub.Participant{
@@ -249,7 +247,7 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			name := strings.TrimSpace(m.namePrompt.Value())
 			if name != "" {
 				m.yourName = name
-				m.hub.SetDisplayName(m.sshUsername, name)
+				m.hub.SetDisplayName(m.id, name)
 				m.namePromptActive = false
 				m.activePane = paneTranscript
 				m.namePrompt.Blur()

@@ -67,21 +67,21 @@ func NewMessage(msgType MessageType, from, content string, round int) *Message {
 
 // NewFlag is the host asking the participant with id target to revise.
 func NewFlag(round int, target string) *Message {
-	m := NewMessage(MessageTypeFlag, "host", "", round)
+	m := NewMessage(MessageTypeFlag, HostID, "", round)
 	m.To = target
 	return m
 }
 
 // NewUnflag is the host withdrawing the Flag on the participant with id target.
 func NewUnflag(round int, target string) *Message {
-	m := NewMessage(MessageTypeUnflag, "host", "", round)
+	m := NewMessage(MessageTypeUnflag, HostID, "", round)
 	m.To = target
 	return m
 }
 
 // NewResolve is the host clearing every Flag at once.
 func NewResolve(round int) *Message {
-	return NewMessage(MessageTypeResolve, "host", "", round)
+	return NewMessage(MessageTypeResolve, HostID, "", round)
 }
 
 // NewRoundState publishes the current round and the flagged Participant ids.

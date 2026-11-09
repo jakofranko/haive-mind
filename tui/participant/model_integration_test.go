@@ -92,7 +92,7 @@ func startedHub(t *testing.T) hub.Hub {
 		t.Fatalf("Failed to start hub: %v", err)
 	}
 	t.Cleanup(func() { h.Stop() })
-	h.SetDisplayName("user1", "Participant One")
+	h.SetDisplayName("Agent-user1", "Participant One")
 	h.RegisterParticipant(hub.NewParticipantEvent("host", "Host", hub.StatusIdle, 1, hub.ParticipantEventConnect))
 	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user1", "Participant One", hub.StatusIdle, 1, hub.ParticipantEventConnect))
 	return h

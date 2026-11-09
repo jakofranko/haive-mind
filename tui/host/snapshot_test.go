@@ -10,7 +10,7 @@ import (
 
 func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -23,7 +23,7 @@ func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_ParticipantsFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -37,7 +37,7 @@ func TestSnapshot_FullTUI_ParticipantsFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_DirectiveFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -52,7 +52,7 @@ func TestSnapshot_FullTUI_DirectiveFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_ButtonsFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -76,7 +76,7 @@ func TestSnapshot_FullTUI_ButtonsFocused(t *testing.T) {
 
 func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -125,7 +125,7 @@ func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 
 func TestSnapshot_Participants_AllStatuses(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -145,7 +145,7 @@ func TestSnapshot_Participants_AllStatuses(t *testing.T) {
 
 func TestSnapshot_SmallTerminal(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 80

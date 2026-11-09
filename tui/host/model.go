@@ -29,13 +29,12 @@ const (
 
 // AppModel is the main TUI model that composes child pane models
 type AppModel struct {
-	hub         hub.Hub
-	width       int
-	height      int
-	activePane  int
-	round       int
-	yourName    string
-	sshUsername string
+	hub        hub.Hub
+	width      int
+	height     int
+	activePane int
+	round      int
+	yourName   string
 
 	// Child models
 	transcript   transcript.Model
@@ -69,7 +68,6 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 		activePane:       paneTranscript,
 		round:            1,
 		yourName:         "Host",
-		sshUsername:      "host",
 		transcript:       transcript.New(),
 		participants:     participants.New(),
 		directive:        directive.New(),
@@ -82,7 +80,7 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 	}
 
 	// Check if we have a stored display name
-	if displayName := hubChans.GetDisplayName("host"); displayName != "" {
+	if displayName := hubChans.GetDisplayName(hub.HostID); displayName != "" {
 		m.yourName = displayName
 	} else {
 		// First time - activate name prompt
@@ -313,12 +311,12 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			name := strings.TrimSpace(m.namePrompt.Value())
 			if name != "" {
 				m.yourName = name
-				m.hub.SetDisplayName("host", name)
+				m.hub.SetDisplayName(hub.HostID, name)
 				m.namePromptActive = false
 				m.activePane = paneTranscript
 				m.namePrompt.Blur()
 				// Send participant update so host panel refreshes
-				p := hub.NewParticipantEvent("host", name, hub.StatusIdle, m.round, hub.ParticipantEventStatusChange)
+				p := hub.NewParticipantEvent(hub.HostID, name, hub.StatusIdle, m.round, hub.ParticipantEventStatusChange)
 				m.hub.RegisterParticipant(p)
 				return m, tea.Batch(
 					m.transcript.Init(),
@@ -514,7 +512,7 @@ func (m *AppModel) showAgentError(failed hub.Message) tea.Cmd {
 		round := failed.Round
 		retry = func() tea.Cmd {
 			return func() tea.Msg {
-				if err := m.hub.Send(context.Background(), hub.NewMessage(again.Type, "host", again.Content, round)); err != nil {
+				if err := m.hub.Send(context.Background(), hub.NewMessage(again.Type, hub.HostID, again.Content, round)); err != nil {
 					return errorMsg(err)
 				}
 				return nil
@@ -528,7 +526,7 @@ func (m *AppModel) showAgentError(failed hub.Message) tea.Cmd {
 // participant. The host cannot flag themselves.
 func (m *AppModel) toggleFlag() (tea.Model, tea.Cmd) {
 	p, ok := m.participants.Selected()
-	if !ok || p.Name == "host" {
+	if !ok || p.Name == hub.HostID {
 		return m, nil
 	}
 	var msg *hub.Message

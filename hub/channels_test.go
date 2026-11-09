@@ -223,8 +223,8 @@ func TestHub_SetDisplayName(t *testing.T) {
 	}
 	defer hubChans.Stop()
 
-	hubChans.SetDisplayName("host", "TestHost")
-	assert.Equal(t, "TestHost", hubChans.GetDisplayName("host"))
+	hubChans.SetDisplayName(HostID, "TestHost")
+	assert.Equal(t, "TestHost", hubChans.GetDisplayName(HostID))
 	assert.Equal(t, "", hubChans.GetDisplayName("unknown"))
 }
 

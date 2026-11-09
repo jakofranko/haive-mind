@@ -245,19 +245,19 @@ func (h *hubImpl) UnregisterParticipant(name string) error {
 	return nil
 }
 
-func (h *hubImpl) GetDisplayName(name string) string {
+func (h *hubImpl) GetDisplayName(id string) string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	if dn, ok := h.displayNames[name]; ok {
+	if dn, ok := h.displayNames[id]; ok {
 		return dn
 	}
 	return ""
 }
 
-func (h *hubImpl) SetDisplayName(name, displayName string) {
+func (h *hubImpl) SetDisplayName(id, displayName string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.displayNames[name] = displayName
+	h.displayNames[id] = displayName
 }
 
 // SetDraft stores a participant's unsent text, keyed by their stable id so it

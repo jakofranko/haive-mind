@@ -129,7 +129,7 @@ func (m Model) View() string {
 		}
 
 		prefix := ""
-		if p.Name == "host" {
+		if p.Name == hub.HostID {
 			prefix = "👑 "
 		}
 		items = append(items, m.styles.participant.Render(fmt.Sprintf("%s%s%s  %s", marker, prefix, displayName, status)))

@@ -10,7 +10,7 @@ import (
 
 func TestSnapshot_ParticipantTUI_TranscriptFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("user1", "Agent-1")
+	hubChans.SetDisplayName("Agent-1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	model.width = 120
@@ -23,7 +23,7 @@ func TestSnapshot_ParticipantTUI_TranscriptFocused(t *testing.T) {
 
 func TestSnapshot_ParticipantTUI_SidebarFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("user1", "Agent-1")
+	hubChans.SetDisplayName("Agent-1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	model.width = 120
@@ -37,7 +37,7 @@ func TestSnapshot_ParticipantTUI_SidebarFocused(t *testing.T) {
 
 func TestSnapshot_ParticipantTUI_ResponseFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("user1", "Agent-1")
+	hubChans.SetDisplayName("Agent-1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	model.width = 120
@@ -52,7 +52,7 @@ func TestSnapshot_ParticipantTUI_ResponseFocused(t *testing.T) {
 
 func TestSnapshot_ParticipantTUI_ResponseWithDraft(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("user1", "Agent-1")
+	hubChans.SetDisplayName("Agent-1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	model.width = 120
@@ -67,7 +67,7 @@ func TestSnapshot_ParticipantTUI_ResponseWithDraft(t *testing.T) {
 
 func TestSnapshot_ParticipantTUI_TranscriptWithMessages(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("user1", "Agent-1")
+	hubChans.SetDisplayName("Agent-1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	model.width = 120
@@ -114,7 +114,7 @@ func TestSnapshot_ParticipantTUI_TranscriptWithMessages(t *testing.T) {
 
 func TestSnapshot_ParticipantTUI_SidebarAllStatuses(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("user1", "Agent-1")
+	hubChans.SetDisplayName("Agent-1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	model.width = 120
@@ -134,7 +134,7 @@ func TestSnapshot_ParticipantTUI_SidebarAllStatuses(t *testing.T) {
 
 func TestSnapshot_ParticipantTUI_SmallTerminal(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("user1", "Agent-1")
+	hubChans.SetDisplayName("Agent-1", "Agent-1")
 	model := NewParticipantModel(hubChans, "Agent-1", "user1")
 
 	model.width = 80

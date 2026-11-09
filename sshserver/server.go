@@ -90,12 +90,11 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	var sshUsername string
 
 	if isHost {
-		sshUsername = "host"
-		name = "host"
+		name = hub.HostID
 		model = host.NewAppModel(m.hub)
 	} else {
 		sshUsername = s.User()
-		name = "Agent-" + sshUsername
+		name = hub.ParticipantID(sshUsername)
 		model = participant.NewParticipantModel(m.hub, name, sshUsername)
 	}
 
@@ -121,7 +120,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	go m.trackSession(s.Context(), session)
 
 	// Register participant with hub
-	displayName := m.hub.GetDisplayName(sshUsername)
+	displayName := m.hub.GetDisplayName(name)
 	if displayName == "" {
 		if isHost {
 			displayName = "Host"
