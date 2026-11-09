@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +29,7 @@ type Transcript struct {
 
 func main() {
 	port := flag.String("port", "2222", "SSH server port")
+	bind := flag.String("bind", "", "Address to listen on; empty means every interface (use 127.0.0.1 to accept local connections only)")
 	hostKey := flag.String("host-key", "", "Path to SSH host key. If empty, an id_ed25519 key is generated in (or reused from) the current directory")
 	dataDir := flag.String("data-dir", "", "Data directory for transcript storage")
 	debug := flag.Bool("debug", false, "Enable debug logging (hub event trace)")
@@ -47,7 +49,7 @@ func main() {
 	hubChans.SetSynthesizer(agent.NewRunner(*agentTimeout))
 	slog.Debug("Hub created")
 
-	server := sshserver.NewServer(hubChans, *port, *hostKey)
+	server := sshserver.NewServer(hubChans, net.JoinHostPort(*bind, *port), *hostKey)
 
 	// The coordinator owns the transcript, rounds and response tracking. The
 	// hub owns agent invocation, so nothing here calls the agent.

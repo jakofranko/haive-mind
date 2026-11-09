@@ -17,7 +17,10 @@ import (
 	"jakofranko/haive-mind/tui/participant"
 )
 
-func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
+// NewServer builds the SSH server listening on addr (host:port; an empty host
+// means every interface). Tests pass a loopback address so the OS firewall has
+// nothing to prompt about.
+func NewServer(h hub.Hub, addr, hostKey string) *ssh.Server {
 	mgr := &sessionManager{
 		hub:                 h,
 		participantSessions: make(map[string]*trackedSession),
@@ -40,7 +43,7 @@ func NewServer(h hub.Hub, port, hostKey string) *ssh.Server {
 	}
 
 	opts := []ssh.Option{
-		wish.WithAddress(":" + port),
+		wish.WithAddress(addr),
 		wish.WithMiddleware(
 			logging.Middleware(),
 			activeterm.Middleware(),

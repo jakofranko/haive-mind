@@ -15,6 +15,9 @@ go build -o haive-mind ./cmd/haive-mind
 # Run the server (default port 2222)
 ./haive-mind --data-dir ./data
 
+# Accept local connections only (no firewall prompt on Windows)
+./haive-mind --data-dir ./data --bind 127.0.0.1
+
 # In separate terminals, connect as host and participants:
 ssh -p 2222 localhost
 ```
