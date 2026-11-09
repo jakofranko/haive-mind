@@ -2,6 +2,7 @@ package sshserver
 
 import (
 	"context"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ import (
 // subscribers. Every message sent through the hub reaches every subscriber.
 func TestNewServer_DoesNotStealMessagesFromSubscribers(t *testing.T) {
 	h := hub.NewHub()
-	NewServer(h, "0", "")
+	NewServer(h, "0", filepath.Join(t.TempDir(), "host_key")) // not "": that writes a key into the package directory
 	defer h.Stop()
 
 	var got atomic.Int32
