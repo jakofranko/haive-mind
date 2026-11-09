@@ -149,3 +149,22 @@ func TestHost_AggregateWithoutFlagsGoesStraightThrough(t *testing.T) {
 
 	assert.Len(t, sent(), 1)
 }
+
+// #32: if the participant under the cursor (the last row) leaves, the cursor
+// moves to a row that exists, so `c` still targets someone.
+func TestHost_CursorStaysOnARowWhenTheSelectedParticipantLeaves(t *testing.T) {
+	m, sent := hostWithAlice(t)
+	updated, _ := m.Update(participantUpdateMsg(&hub.Participant{Name: "Agent-bob", DisplayName: "Bobby", Status: hub.StatusIdle}))
+	m = updated.(*AppModel)
+	m = typeText(m, "j") // Alice -> Bobby, the last row
+
+	updated, _ = m.Update(participantUpdateMsg(&hub.Participant{Name: "Agent-bob", Status: hub.StatusDisconnected}))
+	m = updated.(*AppModel)
+	assert.NotContains(t, visible(m.View()), "Bobby")
+
+	typeText(m, "c")
+	got := sent()
+	if assert.Len(t, got, 1, "c should land on the last remaining participant") {
+		assert.Equal(t, "Agent-alice", got[0].To)
+	}
+}

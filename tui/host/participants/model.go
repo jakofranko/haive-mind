@@ -170,6 +170,12 @@ func (m *Model) RemoveParticipant(name string) {
 			break
 		}
 	}
+	if m.cursor >= len(m.participants) {
+		m.cursor = len(m.participants) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
 }
 
 func (m *Model) SetRound(round int) {
