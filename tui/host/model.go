@@ -2,6 +2,8 @@ package host
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -207,6 +209,7 @@ func (m *AppModel) setupSubscriptions() tea.Cmd {
 		hub.MessageTypeAggregate,
 		hub.MessageTypeAggregateDraft,
 		hub.MessageTypeAgentError,
+		hub.MessageTypeConflictUpdate,
 	}, func(msg *hub.Message) error {
 		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
 			return nil // a signal to the coordinator, not transcript content
@@ -310,6 +313,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
+		if msg.Type == hub.MessageTypeConflictUpdate {
+			var ids []string
+			if json.Unmarshal([]byte(msg.Content), &ids) == nil {
+				m.participants.SetFlagged(ids)
+			}
+			return m, m.listenForMessages()
+		}
 		if msg.Type == hub.MessageTypeAgentError {
 			return m, tea.Batch(m.showAgentError(hub.Message(msg)), m.listenForMessages())
 		}
@@ -525,6 +535,12 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case paneParticipants:
+		if keyStr == "c" {
+			return m.toggleFlag()
+		}
+		if model, _ := m.participants.Update(msg); true {
+			m.participants = model.(participants.Model)
+		}
 		return m, nil
 	}
 
@@ -572,12 +588,17 @@ func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 	activeBtn := m.buttons.ActiveButton()
 	switch activeBtn {
 	case "[Aggregate]":
+		if n := m.participants.FlaggedCount(); n > 0 {
+			return m, m.confirmAggregate(n)
+		}
 		m.hub.RequestAggregate(m.round)
 	case "[Send]":
 		return m.handleDirectiveSend()
 	case "[New Round]":
 		// The coordinator owns the round number; we adopt it on RoundChange.
 		m.hub.StartRound(m.round + 1)
+	case "[Resolve]":
+		m.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeConflictResolve, "host", "", m.round))
 	case "[Export]":
 		exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
 		m.hub.Export(exportPath)
@@ -658,4 +679,38 @@ func (m *AppModel) showAgentError(failed hub.Message) tea.Cmd {
 		}
 	}
 	return toast.ShowToast(failed.Content, true, retry)
+}
+
+// toggleFlag asks the coordinator to flag (or unflag) the selected
+// participant. The host cannot flag themselves.
+func (m *AppModel) toggleFlag() (tea.Model, tea.Cmd) {
+	p, ok := m.participants.Selected()
+	if !ok || p.Name == "host" {
+		return m, nil
+	}
+	action := "flag"
+	if m.participants.IsFlagged(p.Name) {
+		action = "unflag"
+	}
+	msg := hub.NewMessage(hub.MessageTypeConflictFlag, "host", action, m.round)
+	msg.To = p.Name
+	m.hub.Send(context.Background(), msg)
+	return m, nil
+}
+
+// confirmAggregate warns that participants are still flagged and offers to
+// aggregate anyway.
+func (m *AppModel) confirmAggregate(flagged int) tea.Cmd {
+	who := "participant is"
+	if flagged != 1 {
+		who = "participants are"
+	}
+	text := fmt.Sprintf("%d %s still flagged for revision. Aggregate anyway?", flagged, who)
+	round := m.round
+	return toast.ShowAction(text, "Continue", func() tea.Cmd {
+		return func() tea.Msg {
+			m.hub.RequestAggregate(round)
+			return nil
+		}
+	})
 }
