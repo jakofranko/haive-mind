@@ -104,7 +104,7 @@ func TestParticipantEventsAreDecoded(t *testing.T) {
 	h := startedHub(t)
 	c := newClient(t, h)
 
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
 	connect := next(t, c).(session.ParticipantEvent).Participant
 	if connect.ID != "Agent-alice" || connect.DisplayName != "Alice" || connect.Event != hub.ParticipantEventConnect {
 		t.Errorf("connect = %+v", connect)

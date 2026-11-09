@@ -36,7 +36,7 @@ func TestHost_ParticipantDisconnect_RemovesThemFromTheList(t *testing.T) {
 
 	m := NewAppModel(h)
 
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
 	updated, _ := m.Update(popUpdate(t, m))
 	m = updated.(*AppModel)
 	if got := len(m.participants.GetParticipants()); got != 1 {

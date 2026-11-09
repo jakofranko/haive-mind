@@ -144,11 +144,11 @@ func TestParticipantModel_UpdateParticipant(t *testing.T) {
 
 	// Add Agent-2 to participants first
 	model.sidebar.SetParticipants([]hub.Participant{
-		{ID: "Agent-1", Status: hub.StatusIdle, Round: 0},
-		{ID: "Agent-2", Status: hub.StatusIdle, Round: 0},
+		{ID: "Agent-1", Status: hub.StatusIdle},
+		{ID: "Agent-2", Status: hub.StatusIdle},
 	})
 
-	updated := hub.Participant{ID: "Agent-2", Status: hub.StatusTyping, Round: 1}
+	updated := hub.Participant{ID: "Agent-2", Status: hub.StatusTyping}
 	model.sidebar.UpdateParticipant(updated)
 
 	participants := model.sidebar.GetParticipants()
@@ -156,7 +156,6 @@ func TestParticipantModel_UpdateParticipant(t *testing.T) {
 	for _, p := range participants {
 		if p.ID == "Agent-2" {
 			assert.Equal(t, hub.StatusTyping, p.Status)
-			assert.Equal(t, 1, p.Round)
 			found = true
 			break
 		}

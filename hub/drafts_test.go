@@ -6,7 +6,7 @@ import "testing"
 // same person can pick it up where the last one left off.
 func TestDrafts_AreKeptPerParticipantAndSurviveDisconnect(t *testing.T) {
 	h := NewHub()
-	h.RegisterParticipant(NewParticipantEvent("Agent-alice", "Alice", StatusIdle, 1, ParticipantEventConnect))
+	h.RegisterParticipant(NewParticipantEvent("Agent-alice", "Alice", StatusIdle, ParticipantEventConnect))
 
 	if got := h.GetDraft("Agent-alice"); got != "" {
 		t.Errorf("a new participant has draft %q, want none", got)

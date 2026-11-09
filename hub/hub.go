@@ -206,8 +206,7 @@ func (h *hubImpl) RegisterParticipant(p *Participant) error {
 	}
 	h.participants[p.ID] = p
 
-	event := NewParticipantEvent(p.ID, p.DisplayName, p.Status, p.Round, ParticipantEventConnect)
-	h.broadcastLocked(MessageTypeParticipantEvent, event)
+	h.broadcastLocked(MessageTypeParticipantEvent, p)
 	return nil
 }
 
@@ -239,7 +238,7 @@ func (h *hubImpl) UnregisterParticipant(id string) error {
 		delete(h.participants, id)
 		delete(h.joined, id)
 
-		event := NewParticipantEvent(p.ID, p.DisplayName, StatusDisconnected, p.Round, ParticipantEventDisconnect)
+		event := NewParticipantEvent(p.ID, p.DisplayName, StatusDisconnected, ParticipantEventDisconnect)
 		h.broadcastLocked(MessageTypeParticipantEvent, event)
 	}
 	return nil
@@ -258,6 +257,17 @@ func (h *hubImpl) SetDisplayName(id, displayName string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.displayNames[id] = displayName
+
+	// A registered participant is renamed in place and the change announced;
+	// the stored entry is replaced, not mutated, so copies already handed out
+	// stay unchanged.
+	if p, ok := h.participants[id]; ok {
+		renamed := *p
+		renamed.DisplayName = displayName
+		renamed.Event = ParticipantEventStatusChange
+		h.participants[id] = &renamed
+		h.broadcastLocked(MessageTypeParticipantEvent, &renamed)
+	}
 }
 
 // SetDraft stores a participant's unsent text, keyed by their stable id so it
@@ -408,7 +418,6 @@ func (h *hubImpl) broadcastLocked(msgType MessageType, payload interface{}) {
 			From:      "hub",
 			Content:   v.Event,
 			Timestamp: time.Now(),
-			Round:     v.Round,
 		}
 	default:
 		return

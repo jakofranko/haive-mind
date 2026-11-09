@@ -22,7 +22,7 @@ func enterName(t *testing.T, m *ParticipantModel, name string) *ParticipantModel
 func TestParticipant_ChoosingDisplayName_DoesNotCreateSecondHubEntry(t *testing.T) {
 	h := hub.NewHub()
 	// What the SSH server does on connect.
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Agent-alice", hub.StatusIdle, 0, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Agent-alice", hub.StatusIdle, hub.ParticipantEventConnect))
 
 	m := NewParticipantModel(h, "Agent-alice", "alice")
 	enterName(t, m, "Alice")
@@ -77,7 +77,7 @@ func TestParticipant_OtherDisconnecting_RemovesThemFromSidebar(t *testing.T) {
 		}
 	}
 
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
 	pump("connect")
 	h.UnregisterParticipant("Agent-alice")
 	pump("disconnect")

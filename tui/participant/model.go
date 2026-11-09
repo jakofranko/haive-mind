@@ -75,7 +75,7 @@ func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantM
 
 	m.sidebar.SetDisplayName(id)
 	m.sidebar.SetParticipants([]hub.Participant{
-		{ID: m.id, DisplayName: id, Status: hub.StatusIdle, Round: 0},
+		{ID: m.id, DisplayName: id, Status: hub.StatusIdle},
 	})
 
 	// Check if we have a stored display name
@@ -83,7 +83,7 @@ func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantM
 		m.displayName = displayName
 		m.sidebar.SetDisplayName(displayName)
 		m.sidebar.SetParticipants([]hub.Participant{
-			{ID: m.id, DisplayName: displayName, Status: hub.StatusIdle, Round: 0},
+			{ID: m.id, DisplayName: displayName, Status: hub.StatusIdle},
 		})
 	} else {
 		// First time - activate name prompt
@@ -253,11 +253,8 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.namePrompt.Blur()
 				m.sidebar.SetDisplayName(name)
 				m.sidebar.SetParticipants([]hub.Participant{
-					{ID: m.id, DisplayName: name, Status: hub.StatusIdle, Round: 0},
+					{ID: m.id, DisplayName: name, Status: hub.StatusIdle},
 				})
-				// Send participant update to hub so host panel shows this participant
-				p := hub.NewParticipantEvent(m.id, name, hub.StatusIdle, m.round, hub.ParticipantEventConnect)
-				m.hub.RegisterParticipant(p)
 				return m, tea.Batch(
 					m.transcript.Init(),
 					m.sidebar.Init(),

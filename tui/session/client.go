@@ -113,7 +113,7 @@ func (c *Client) participantFor(msg *hub.Message) *hub.Participant {
 	// The hub has already forgotten a participant who disconnected, so there is
 	// nothing to look up: the event itself says who to remove.
 	if msg.Content == hub.ParticipantEventDisconnect {
-		return &hub.Participant{ID: msg.ID, Status: hub.StatusDisconnected, Round: msg.Round, Event: msg.Content}
+		return &hub.Participant{ID: msg.ID, Status: hub.StatusDisconnected, Event: msg.Content}
 	}
 	for _, p := range c.hub.GetParticipants() {
 		if p.ID == msg.ID {

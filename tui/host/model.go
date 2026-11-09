@@ -315,9 +315,6 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.namePromptActive = false
 				m.activePane = paneTranscript
 				m.namePrompt.Blur()
-				// Send participant update so host panel refreshes
-				p := hub.NewParticipantEvent(hub.HostID, name, hub.StatusIdle, m.round, hub.ParticipantEventStatusChange)
-				m.hub.RegisterParticipant(p)
 				return m, tea.Batch(
 					m.transcript.Init(),
 					m.participants.Init(),

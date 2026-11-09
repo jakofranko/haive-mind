@@ -182,7 +182,7 @@ func TestHub_RegisterUnregisterParticipant(t *testing.T) {
 	defer sub.Unsubscribe()
 
 	// Register
-	p := NewParticipantEvent("host", "Host", StatusIdle, 1, ParticipantEventConnect)
+	p := NewParticipantEvent("host", "Host", StatusIdle, ParticipantEventConnect)
 	err = hubChans.RegisterParticipant(p)
 	assert.NoError(t, err)
 

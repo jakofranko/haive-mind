@@ -14,7 +14,7 @@ func names(h *hubImpl) []string {
 }
 
 func join(h *hubImpl, id string) {
-	h.RegisterParticipant(NewParticipantEvent(id, id, StatusIdle, 1, ParticipantEventConnect))
+	h.RegisterParticipant(NewParticipantEvent(id, id, StatusIdle, ParticipantEventConnect))
 }
 
 // #31: participants come back in the order they joined, every time.

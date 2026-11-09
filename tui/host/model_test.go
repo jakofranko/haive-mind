@@ -148,7 +148,7 @@ func TestAppModel_UpdateParticipant_Upsert(t *testing.T) {
 	model := NewAppModel(hubChans)
 
 	// Add new participant (join)
-	updated := hub.Participant{ID: "Agent-new", DisplayName: "New Agent", Status: hub.StatusTyping, Round: 1}
+	updated := hub.Participant{ID: "Agent-new", DisplayName: "New Agent", Status: hub.StatusTyping}
 	model.participants.UpdateParticipant(updated)
 
 	participants := model.participants.GetParticipants()
@@ -156,10 +156,9 @@ func TestAppModel_UpdateParticipant_Upsert(t *testing.T) {
 	assert.Equal(t, "Agent-new", participants[0].ID)
 	assert.Equal(t, "New Agent", participants[0].DisplayName)
 	assert.Equal(t, hub.StatusTyping, participants[0].Status)
-	assert.Equal(t, 1, participants[0].Round)
 
 	// Update existing participant
-	updated = hub.Participant{ID: "Agent-new", DisplayName: "New Agent", Status: hub.StatusReady, Round: 1}
+	updated = hub.Participant{ID: "Agent-new", DisplayName: "New Agent", Status: hub.StatusReady}
 	model.participants.UpdateParticipant(updated)
 
 	participants = model.participants.GetParticipants()
@@ -173,8 +172,8 @@ func TestAppModel_RemoveParticipant(t *testing.T) {
 	model := NewAppModel(hubChans)
 
 	// Add participants
-	model.participants.UpdateParticipant(hub.Participant{ID: "Agent-1", DisplayName: "Agent One", Status: hub.StatusIdle, Round: 0})
-	model.participants.UpdateParticipant(hub.Participant{ID: "Agent-2", DisplayName: "Agent Two", Status: hub.StatusIdle, Round: 0})
+	model.participants.UpdateParticipant(hub.Participant{ID: "Agent-1", DisplayName: "Agent One", Status: hub.StatusIdle})
+	model.participants.UpdateParticipant(hub.Participant{ID: "Agent-2", DisplayName: "Agent Two", Status: hub.StatusIdle})
 	assert.Len(t, model.participants.GetParticipants(), 2)
 
 	// Remove one

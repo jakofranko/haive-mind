@@ -14,7 +14,7 @@ func statusRig(t *testing.T) (*ParticipantModel, func() hub.ParticipantStatus) {
 	t.Helper()
 	h := hub.NewHub()
 	h.SetDisplayName("Agent-alice", "Alice")
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
 	m := NewParticipantModel(h, "Agent-alice", "alice")
 	m.activePane = paneResponse
 	m.updateActiveStates()

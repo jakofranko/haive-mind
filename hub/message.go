@@ -111,7 +111,6 @@ type Participant struct {
 	ID          string            `json:"id"`
 	DisplayName string            `json:"display_name"`
 	Status      ParticipantStatus `json:"status"`
-	Round       int               `json:"round"`
 	Event       string            `json:"event,omitempty"` // "connect", "disconnect", "status_change"
 }
 
@@ -121,12 +120,11 @@ const (
 	ParticipantEventStatusChange = "status_change"
 )
 
-func NewParticipantEvent(id, displayName string, status ParticipantStatus, round int, event string) *Participant {
+func NewParticipantEvent(id, displayName string, status ParticipantStatus, event string) *Participant {
 	return &Participant{
 		ID:          id,
 		DisplayName: displayName,
 		Status:      status,
-		Round:       round,
 		Event:       event,
 	}
 }

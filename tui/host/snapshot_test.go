@@ -132,10 +132,10 @@ func TestSnapshot_Participants_AllStatuses(t *testing.T) {
 	model.height = 40
 	model.activePane = paneParticipants
 	model.participants.SetParticipants([]hub.Participant{
-		{ID: "Agent-1", DisplayName: "Agent-1", Status: hub.StatusIdle, Round: 1},
-		{ID: "Agent-2", DisplayName: "Agent-2", Status: hub.StatusTyping, Round: 1},
-		{ID: "Agent-3", DisplayName: "Agent-3", Status: hub.StatusSubmitted, Round: 1},
-		{ID: "Agent-4", DisplayName: "Agent-4", Status: hub.StatusReady, Round: 1},
+		{ID: "Agent-1", DisplayName: "Agent-1", Status: hub.StatusIdle},
+		{ID: "Agent-2", DisplayName: "Agent-2", Status: hub.StatusTyping},
+		{ID: "Agent-3", DisplayName: "Agent-3", Status: hub.StatusSubmitted},
+		{ID: "Agent-4", DisplayName: "Agent-4", Status: hub.StatusReady},
 	})
 	model.layout()
 

@@ -129,7 +129,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 		}
 	}
 
-	p := hub.NewParticipantEvent(name, displayName, hub.StatusIdle, 0, hub.ParticipantEventConnect)
+	p := hub.NewParticipantEvent(name, displayName, hub.StatusIdle, hub.ParticipantEventConnect)
 	if err := m.hub.RegisterParticipant(p); err != nil {
 		log.Printf("Failed to register participant: %v", err)
 	}
