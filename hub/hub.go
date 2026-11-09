@@ -401,7 +401,7 @@ func (h *hubImpl) invokeAgent(msg *Message) {
 			return
 		}
 
-		reply := NewMessage(MessageTypeResponse, "agent", response, msg.Round)
+		reply := NewMessage(MessageTypeAgentReply, "agent", response, msg.Round)
 		h.Send(h.ctx, reply)
 	}()
 }

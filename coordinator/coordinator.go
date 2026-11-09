@@ -39,6 +39,7 @@ func New(h hub.Hub) *Coordinator {
 var transcriptTypes = []hub.MessageType{
 	hub.MessageTypeDirective,
 	hub.MessageTypeResponse,
+	hub.MessageTypeAgentReply,
 	hub.MessageTypeSystem,
 	hub.MessageTypeAggregate,
 	hub.MessageTypeAggregateDraft,
@@ -174,12 +175,9 @@ func senderID(msg *hub.Message) string {
 	return msg.From
 }
 
-// trackResponse remembers each participant's latest (non-agent) response by
+// trackResponse remembers each participant's latest response by
 // round, and lifts that participant's revision flag.
 func (c *Coordinator) trackResponse(msg *hub.Message) error {
-	if msg.From == "agent" {
-		return nil
-	}
 	id := senderID(msg)
 	c.mu.Lock()
 	replaced := false

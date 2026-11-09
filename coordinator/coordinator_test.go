@@ -80,14 +80,14 @@ func TestDirective_InvokesAgentOnce(t *testing.T) {
 	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeDirective, "Host", "hello", 1))
 
 	eventually(t, "agent reply in transcript", func() bool {
-		return countType(c.Transcript(), hub.MessageTypeResponse, "agent") >= 1
+		return countType(c.Transcript(), hub.MessageTypeAgentReply, "") >= 1
 	})
 	time.Sleep(100 * time.Millisecond) // give any duplicate time to show up
 
 	if got := r.calls.Load(); got != 1 {
 		t.Errorf("agent invoked %d times, want 1", got)
 	}
-	if got := countType(c.Transcript(), hub.MessageTypeResponse, "agent"); got != 1 {
+	if got := countType(c.Transcript(), hub.MessageTypeAgentReply, ""); got != 1 {
 		t.Errorf("transcript has %d agent replies, want 1", got)
 	}
 }
@@ -104,7 +104,7 @@ func TestAggregateRequest_SynthesizesOnceAndSharesTheDraft(t *testing.T) {
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeResponse, "bob", "use sqlite", 1))
 	eventually(t, "directive reply and both responses recorded", func() bool {
 		tr := c.Transcript()
-		return countType(tr, hub.MessageTypeResponse, "") >= 3
+		return countType(tr, hub.MessageTypeResponse, "") >= 2
 	})
 	agentCallsBefore := agentRunner.calls.Load()
 

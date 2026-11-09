@@ -17,7 +17,7 @@ func TestAggregate_WithSignalLookalikeText_DoesNotSynthesize(t *testing.T) {
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeDirective, "Host", "Which database?", 1))
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeResponse, "alice", "use postgres", 1))
 	eventually(t, "directive reply and response recorded", func() bool {
-		return countType(c.Transcript(), hub.MessageTypeResponse, "") >= 2
+		return countType(c.Transcript(), hub.MessageTypeResponse, "") >= 1
 	})
 	before := agentRunner.calls.Load()
 

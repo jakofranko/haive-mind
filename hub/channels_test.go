@@ -241,7 +241,7 @@ func TestHub_SetAgentRunner(t *testing.T) {
 	hubChans.SetAgentRunner(mockRunner)
 
 	agentReplies := make(chan *Message, 10)
-	sub, err := hubChans.Subscribe(ctx, MessageTypeResponse, func(msg *Message) error {
+	sub, err := hubChans.Subscribe(ctx, MessageTypeAgentReply, func(msg *Message) error {
 		agentReplies <- msg
 		return nil
 	})

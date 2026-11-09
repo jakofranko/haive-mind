@@ -185,6 +185,7 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 	sub, err := m.hub.SubscribeTypes(ctx, []hub.MessageType{
 		hub.MessageTypeDirective,
 		hub.MessageTypeResponse,
+		hub.MessageTypeAgentReply,
 		hub.MessageTypeSystem,
 		hub.MessageTypeAggregate,
 		hub.MessageTypeAggregateDraft,

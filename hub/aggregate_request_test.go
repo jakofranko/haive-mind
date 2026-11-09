@@ -12,7 +12,7 @@ func TestAggregate_WithSignalLookalikeText_IsInvokedOnAgent(t *testing.T) {
 	h := NewHub()
 	agent := &stubRunner{reply: "ok"}
 	h.SetAgentRunner(agent)
-	replies := collect(t, h, MessageTypeResponse)
+	replies := collect(t, h, MessageTypeAgentReply)
 	if err := h.Start(); err != nil {
 		t.Fatal(err)
 	}

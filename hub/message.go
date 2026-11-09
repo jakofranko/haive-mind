@@ -22,6 +22,7 @@ type MessageType string
 const (
 	MessageTypeDirective        MessageType = "directive"
 	MessageTypeResponse         MessageType = "response"
+	MessageTypeAgentReply       MessageType = "agent_reply"
 	MessageTypeSystem           MessageType = "system"
 	MessageTypeAggregate        MessageType = "aggregate"
 	MessageTypeAggregateRequest MessageType = "aggregate_request"
