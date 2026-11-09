@@ -13,7 +13,7 @@ import (
 func popUpdate(t *testing.T, m *AppModel) tea.Msg {
 	t.Helper()
 	res := make(chan tea.Msg, 1)
-	go func() { res <- m.listenForParticipants()() }()
+	go func() { res <- m.waitForEvent()() }()
 	select {
 	case msg := <-res:
 		return msg
@@ -35,7 +35,6 @@ func TestHost_ParticipantDisconnect_RemovesThemFromTheList(t *testing.T) {
 	defer h.Stop()
 
 	m := NewAppModel(h)
-	m.setupSubscriptions()
 
 	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
 	updated, _ := m.Update(popUpdate(t, m))

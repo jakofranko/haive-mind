@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/session"
 )
 
 // run feeds a command's message back into the model, as Bubble Tea would.
@@ -28,10 +29,10 @@ func run(m *AppModel, cmd tea.Cmd) *AppModel {
 	return run(updated.(*AppModel), next)
 }
 
-func agentErrorMsg(text string, retry hub.Retry) hubMessageMsg {
+func agentErrorMsg(text string, retry hub.Retry) eventMsg {
 	msg := hub.NewMessage(hub.MessageTypeAgentError, "hub", text, 1)
 	msg.Retry = &retry
-	return hubMessageMsg(*msg)
+	return eventMsg{session.MessageEvent{Message: *msg}}
 }
 
 // G16: an agent failure surfaces as a toast on the host, and Retry sends the

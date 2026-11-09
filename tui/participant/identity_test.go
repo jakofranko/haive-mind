@@ -64,11 +64,10 @@ func TestParticipant_OtherDisconnecting_RemovesThemFromSidebar(t *testing.T) {
 	defer h.Stop()
 
 	m := NewParticipantModel(h, "Agent-bob", "bob")
-	m.setupSubscriptions()
 
 	pump := func(what string) {
 		res := make(chan tea.Msg, 1)
-		go func() { res <- m.listenForParticipants()() }()
+		go func() { res <- m.waitForEvent()() }()
 		select {
 		case msg := <-res:
 			updated, _ := m.Update(msg)

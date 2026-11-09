@@ -8,10 +8,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/inbox"
 	"jakofranko/haive-mind/tui/participant/response"
 	"jakofranko/haive-mind/tui/participant/sidebar"
 	"jakofranko/haive-mind/tui/participant/transcript"
+	"jakofranko/haive-mind/tui/session"
 )
 
 const (
@@ -42,16 +42,8 @@ type ParticipantModel struct {
 
 	namePromptActive bool
 
-	subscriptions []hub.Subscription
-
-	// Internal channels for hub message forwarding
-	msgCh         *inbox.Queue[*hub.Message]
-	participantCh *inbox.Queue[*hub.Participant]
-	roundCh       *inbox.Queue[int]
-	errorCh       *inbox.Queue[error]
-
-	// Synchronization
-	subscriptionsReady chan struct{}
+	// The session's conversation with the hub.
+	client *session.Client
 }
 
 func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *ParticipantModel {
@@ -63,24 +55,19 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 	namePrompt.Width = 40
 
 	m := &ParticipantModel{
-		hub:                hubChans,
-		activePane:         paneTranscript,
-		round:              1,
-		id:                 yourName,
-		status:             hub.StatusIdle,
-		yourName:           yourName,
-		sshUsername:        sshUsername,
-		transcript:         transcript.New(),
-		sidebar:            sidebar.New(),
-		response:           response.New(),
-		namePrompt:         namePrompt,
-		namePromptActive:   false,
-		subscriptions:      make([]hub.Subscription, 0),
-		msgCh:              inbox.New[*hub.Message](),
-		participantCh:      inbox.New[*hub.Participant](),
-		roundCh:            inbox.New[int](),
-		errorCh:            inbox.New[error](),
-		subscriptionsReady: make(chan struct{}),
+		hub:              hubChans,
+		activePane:       paneTranscript,
+		round:            1,
+		id:               yourName,
+		status:           hub.StatusIdle,
+		yourName:         yourName,
+		sshUsername:      sshUsername,
+		transcript:       transcript.New(),
+		sidebar:          sidebar.New(),
+		response:         response.New(),
+		namePrompt:       namePrompt,
+		namePromptActive: false,
+		client:           session.New(hubChans),
 	}
 
 	// Pick up text a previous session left unsent.
@@ -111,144 +98,36 @@ func NewParticipantModel(hubChans hub.Hub, yourName, sshUsername string) *Partic
 
 func (m *ParticipantModel) Init() tea.Cmd {
 	if m.namePromptActive {
-		return tea.Batch(
-			textinput.Blink,
-			m.setupSubscriptions(),
-			m.listenForMessages(),
-			m.listenForParticipants(),
-			m.listenForRounds(),
-			m.listenForErrors(),
-			m.fetchInitialParticipants(),
-		)
+		return tea.Batch(textinput.Blink, m.waitForEvent(), m.initialParticipants())
 	}
 	return tea.Batch(
 		m.transcript.Init(),
 		m.sidebar.Init(),
 		m.response.Init(),
-		m.setupSubscriptions(),
-		m.listenForMessages(),
-		m.listenForParticipants(),
-		m.listenForRounds(),
-		m.listenForErrors(),
-		m.fetchInitialParticipants(),
+		m.waitForEvent(),
+		m.initialParticipants(),
 	)
 }
 
-func (m *ParticipantModel) fetchInitialParticipants() tea.Cmd {
-	return func() tea.Msg {
-		participants := m.hub.GetParticipants()
-		return initialParticipantsMsg(participants)
-	}
+type initialParticipantsMsg []hub.Participant
+
+func (m *ParticipantModel) initialParticipants() tea.Cmd {
+	return func() tea.Msg { return initialParticipantsMsg(m.client.Participants()) }
 }
 
-type initialParticipantsMsg []*hub.Participant
+// eventMsg carries one event from the session client into Update.
+type eventMsg struct{ session.Event }
 
-func (m *ParticipantModel) listenForMessages() tea.Cmd {
+// waitForEvent pops the client's next event; Update re-arms it. It returns
+// nil once the client is closed, which ends the wait.
+func (m *ParticipantModel) waitForEvent() tea.Cmd {
 	return func() tea.Msg {
-		msg := m.msgCh.Pop()
-		return hubMessageMsg(*msg)
-	}
-}
-
-func (m *ParticipantModel) listenForParticipants() tea.Cmd {
-	return func() tea.Msg {
-		p := m.participantCh.Pop()
-		return participantUpdateMsg(p)
-	}
-}
-
-func (m *ParticipantModel) listenForRounds() tea.Cmd {
-	return func() tea.Msg {
-		round := m.roundCh.Pop()
-		return roundChangedMsg(round)
-	}
-}
-
-func (m *ParticipantModel) listenForErrors() tea.Cmd {
-	return func() tea.Msg {
-		err := m.errorCh.Pop()
-		return errorMsg(err)
-	}
-}
-
-type hubMessageMsg hub.Message
-type participantUpdateMsg *hub.Participant
-type roundChangedMsg int
-type errorMsg error
-
-func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
-	ctx := context.Background()
-
-	// Transcript traffic arrives through one subscription so that messages of
-	// different types keep the order they were sent in.
-	sub, err := m.hub.SubscribeTypes(ctx, []hub.MessageType{
-		hub.MessageTypeDirective,
-		hub.MessageTypeResponse,
-		hub.MessageTypeAgentReply,
-		hub.MessageTypeSystem,
-		hub.MessageTypeAggregate,
-		hub.MessageTypeAggregateDraft,
-		hub.MessageTypeFlagUpdate,
-	}, func(msg *hub.Message) error {
-		m.msgCh.Push(msg)
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
-	}
-
-	// Subscribe to participant events
-	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeParticipantEvent, func(msg *hub.Message) error {
-		p := m.parseParticipantEvent(msg)
-		if p != nil {
-			m.participantCh.Push(p)
+		ev, ok := m.client.Next()
+		if !ok {
+			return nil
 		}
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
+		return eventMsg{ev}
 	}
-
-	// Subscribe to round changes
-	sub, err = m.hub.Subscribe(ctx, hub.MessageTypeRoundChange, func(msg *hub.Message) error {
-		m.roundCh.Push(msg.Round)
-		return nil
-	})
-	if err == nil {
-		m.subscriptions = append(m.subscriptions, sub)
-	}
-
-	close(m.subscriptionsReady)
-	return func() tea.Msg { return subscriptionsReadyMsg{} }
-}
-
-type subscriptionsReadyMsg struct{}
-
-func (m *ParticipantModel) handleMessage(msg *hub.Message) error {
-	return nil // Kept for compatibility
-}
-
-func (m *ParticipantModel) parseParticipantEvent(msg *hub.Message) *hub.Participant {
-	// The hub has already forgotten a participant who disconnected, so there is
-	// nothing to look up: the event itself says who to remove.
-	if msg.Content == hub.ParticipantEventDisconnect {
-		return &hub.Participant{Name: msg.ID, Status: hub.StatusDisconnected, Round: msg.Round, Event: msg.Content}
-	}
-	participants := m.hub.GetParticipants()
-	for _, p := range participants {
-		if p.Name == msg.ID {
-			return p
-		}
-	}
-	return nil
-}
-
-func (m *ParticipantModel) handleParticipantUpdate(p *hub.Participant) error {
-	return nil
-}
-
-func (m *ParticipantModel) handleRoundChange(round int) error {
-	return nil
 }
 
 func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -265,47 +144,37 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
 
-	case hubMessageMsg:
-		if msg.Type == hub.MessageTypeFlagUpdate {
-			m.applyFlags(hub.Message(msg))
-			return m, m.listenForMessages()
-		}
-		m.transcript.AddMessage(hub.Message(msg))
-		cmds = append(cmds, m.listenForMessages())
-		return m, tea.Batch(cmds...)
-
-	case participantUpdateMsg:
-		if msg.Status == hub.StatusDisconnected {
-			m.sidebar.RemoveParticipant(msg.Name)
-		} else {
-			m.sidebar.UpdateParticipant(*msg)
-		}
-		cmds = append(cmds, m.listenForParticipants())
-		return m, tea.Batch(cmds...)
-
-	case roundChangedMsg:
-		m.round = int(msg)
-		m.sidebar.SetRound(m.round)
-		m.setStatus(hub.StatusIdle)
-		cmds = append(cmds, m.listenForRounds())
-		return m, tea.Batch(cmds...)
+	case eventMsg:
+		m.reduce(msg.Event)
+		return m, m.waitForEvent()
 
 	case initialParticipantsMsg:
-		participants := make([]hub.Participant, len(msg))
-		for i, p := range msg {
-			participants[i] = *p
-		}
-		m.sidebar.SetParticipants(participants)
+		m.sidebar.SetParticipants(msg)
 		return m, nil
-
-	case errorMsg:
-		m.transcript.AddSystemMessage("Error: " + msg.Error())
-		cmds = append(cmds, m.listenForErrors())
-		return m, tea.Batch(cmds...)
 	}
 
 	cmds = append(cmds, m.forwardToFocused(msg)...)
 	return m, tea.Batch(cmds...)
+}
+
+// reduce applies one event from the session client to the panes.
+func (m *ParticipantModel) reduce(ev session.Event) {
+	switch ev := ev.(type) {
+	case session.MessageEvent:
+		m.transcript.AddMessage(ev.Message)
+	case session.ParticipantEvent:
+		if ev.Participant.Status == hub.StatusDisconnected {
+			m.sidebar.RemoveParticipant(ev.Participant.Name)
+		} else {
+			m.sidebar.UpdateParticipant(*ev.Participant)
+		}
+	case session.RoundEvent:
+		m.round = ev.Round
+		m.sidebar.SetRound(m.round)
+		m.setStatus(hub.StatusIdle)
+	case session.FlagEvent:
+		m.applyFlags(ev.IDs)
+	}
 }
 
 func (m *ParticipantModel) forwardToChildren(msg tea.Msg) []tea.Cmd {
@@ -508,13 +377,10 @@ func (m *ParticipantModel) namePromptView() string {
 	return lipgloss.JoinVertical(lipgloss.Center, title, prompt)
 }
 
-// Close releases every hub subscription this model made. Call it when the
-// session ends so the hub stops delivering to a model nobody is reading.
+// Close ends the session's conversation with the hub. Call it when the session
+// ends so the hub stops delivering to a model nobody is reading.
 func (m *ParticipantModel) Close() {
-	for _, sub := range m.subscriptions {
-		sub.Unsubscribe()
-	}
-	m.subscriptions = nil
+	m.client.Close()
 }
 
 func (m *ParticipantModel) SetYourName(name string) {
@@ -522,20 +388,11 @@ func (m *ParticipantModel) SetYourName(name string) {
 	m.sidebar.SetYourName(name)
 }
 
-// SubscriptionsReady returns a channel that closes when subscriptions are registered
-func (m *ParticipantModel) SubscriptionsReady() <-chan struct{} {
-	return m.subscriptionsReady
-}
-
 // applyFlags handles the coordinator's announcement of who the host has asked
 // to revise. When this participant newly becomes flagged they are told, their
 // last answer comes back for editing (unless they are already typing), and
 // they are idle again.
-func (m *ParticipantModel) applyFlags(msg hub.Message) {
-	ids, err := msg.FlaggedIDs()
-	if err != nil {
-		return
-	}
+func (m *ParticipantModel) applyFlags(ids []string) {
 	m.sidebar.SetFlagged(ids)
 
 	flagged := false

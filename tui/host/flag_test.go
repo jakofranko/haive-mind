@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/session"
 )
 
 // hostWithAlice is a host model that knows two participants, with the
@@ -24,8 +25,8 @@ func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 	return m, sent
 }
 
-func flaggedUpdate(ids ...string) hubMessageMsg {
-	return hubMessageMsg(*hub.NewFlagUpdate(1, ids))
+func flaggedUpdate(ids ...string) eventMsg {
+	return eventMsg{session.FlagEvent{IDs: ids}}
 }
 
 func runAll(m *AppModel, cmd tea.Cmd) *AppModel { return run(m, cmd) }
@@ -152,11 +153,11 @@ func TestHost_AggregateWithoutFlagsGoesStraightThrough(t *testing.T) {
 // moves to a row that exists, so `c` still targets someone.
 func TestHost_CursorStaysOnARowWhenTheSelectedParticipantLeaves(t *testing.T) {
 	m, sent := hostWithAlice(t)
-	updated, _ := m.Update(participantUpdateMsg(&hub.Participant{Name: "Agent-bob", DisplayName: "Bobby", Status: hub.StatusIdle}))
+	updated, _ := m.Update(eventMsg{session.ParticipantEvent{Participant: &hub.Participant{Name: "Agent-bob", DisplayName: "Bobby", Status: hub.StatusIdle}}})
 	m = updated.(*AppModel)
 	m = typeText(m, "j") // Alice -> Bobby, the last row
 
-	updated, _ = m.Update(participantUpdateMsg(&hub.Participant{Name: "Agent-bob", Status: hub.StatusDisconnected}))
+	updated, _ = m.Update(eventMsg{session.ParticipantEvent{Participant: &hub.Participant{Name: "Agent-bob", Status: hub.StatusDisconnected}}})
 	m = updated.(*AppModel)
 	assert.NotContains(t, visible(m.View()), "Bobby")
 

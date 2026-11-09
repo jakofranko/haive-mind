@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/session"
 )
 
 // statusRig is a participant already named and registered the way the SSH
@@ -56,7 +57,7 @@ func TestParticipantStatus_FollowsTypingSubmittingAndNewRound(t *testing.T) {
 		t.Errorf("after submitting: %q, want submitted", got)
 	}
 
-	m = step(m, roundChangedMsg(2))
+	m = step(m, eventMsg{session.RoundEvent{Round: 2}})
 	if got := status(); got != hub.StatusIdle {
 		t.Errorf("after a new round: %q, want idle", got)
 	}

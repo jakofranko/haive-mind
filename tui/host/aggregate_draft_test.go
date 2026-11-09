@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
+	"jakofranko/haive-mind/tui/session"
 )
 
 type noopRunner struct{}
@@ -45,8 +46,8 @@ func sentRig(t *testing.T, types ...hub.MessageType) (hub.Hub, func() []*hub.Mes
 	}
 }
 
-func draftMsg(content string) hubMessageMsg {
-	return hubMessageMsg(*hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", content, 1))
+func draftMsg(content string) eventMsg {
+	return eventMsg{session.MessageEvent{Message: *hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", content, 1)}}
 }
 
 func typeText(m *AppModel, text string) *AppModel {
