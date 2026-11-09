@@ -268,7 +268,7 @@ func TestFullRound(t *testing.T) {
 
 	// Host exports (button 4: three moves right) and the file is valid JSON
 	// containing the whole round.
-	host.send(t, "\t") // the host is still in the input pane after sending
+	host.send(t, "\t")       // the host is still in the input pane after sending
 	for i := 0; i < 3; i++ { // one key event per press; "lll" would be a single event
 		host.send(t, "l")
 	}

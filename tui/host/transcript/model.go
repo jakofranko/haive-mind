@@ -54,7 +54,7 @@ func New() Model {
 
 	return Model{
 		viewport: vp,
-		content:  welcome + `
+		content: welcome + `
 `,
 		renderer: renderer,
 		styles:   defaultStyles(),

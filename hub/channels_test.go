@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/agent"
 	"github.com/stretchr/testify/assert"
+	"jakofranko/haive-mind/agent"
 )
 
 type mockAgentRunner struct {

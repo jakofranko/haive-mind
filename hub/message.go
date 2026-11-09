@@ -38,15 +38,15 @@ const (
 )
 
 type Message struct {
-	ID        string      `json:"id"`
-	Type      MessageType `json:"type"`
-	From      string      `json:"from"`
-	To        string      `json:"to,omitempty"`
+	ID   string      `json:"id"`
+	Type MessageType `json:"type"`
+	From string      `json:"from"`
+	To   string      `json:"to,omitempty"`
 	// FromID is the sender's stable participant id, when From is a display name.
-	FromID string `json:"from_id,omitempty"`
-	Content   string      `json:"content"`
-	Timestamp time.Time   `json:"timestamp"`
-	Round     int         `json:"round"`
+	FromID    string    `json:"from_id,omitempty"`
+	Content   string    `json:"content"`
+	Timestamp time.Time `json:"timestamp"`
+	Round     int       `json:"round"`
 	// Retry, on an agent_error, is the message to send again to retry.
 	Retry *Retry `json:"retry,omitempty"`
 }

@@ -20,8 +20,8 @@ func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 		{Name: "Agent-alice", DisplayName: "Alice", Status: hub.StatusSubmitted},
 	})
 	m = updated.(*AppModel)
-	m = press(m, tea.KeyTab)        // transcript -> participants
-	m = typeText(m, "j")            // host row -> Alice
+	m = press(m, tea.KeyTab) // transcript -> participants
+	m = typeText(m, "j")     // host row -> Alice
 	return m, sent
 }
 

@@ -24,17 +24,17 @@ const (
 )
 
 type ParticipantModel struct {
-	hub         hub.Hub
-	width       int
-	height      int
-	activePane  int
-	round       int
-	id          string // stable hub identity (set by the SSH server); never changes
-	yourName    string // display name
+	hub           hub.Hub
+	width         int
+	height        int
+	activePane    int
+	round         int
+	id            string // stable hub identity (set by the SSH server); never changes
+	yourName      string // display name
 	lastSubmitted string // what they last sent, offered back when the host asks for a revision
 	flaggedSelf   bool   // the host currently has this participant flagged
-	status      hub.ParticipantStatus
-	sshUsername string
+	status        hub.ParticipantStatus
+	sshUsername   string
 
 	transcript transcript.Model
 	sidebar    sidebar.Model
