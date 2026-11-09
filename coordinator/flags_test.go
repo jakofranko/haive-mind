@@ -22,13 +22,13 @@ func watchUpdates(t *testing.T, h hub.Hub) *updates {
 	t.Helper()
 	u := &updates{}
 	if _, err := h.Subscribe(context.Background(), hub.MessageTypeRoundState, func(m *hub.Message) error {
-		ids, err := m.RoundStateFlaggedIDs()
+		round, ids, err := m.RoundState()
 		if err != nil {
 			t.Errorf("round_state content %q is not a JSON list: %v", m.Content, err)
 		}
 		u.mu.Lock()
 		u.list = append(u.list, ids)
-		u.rnds = append(u.rnds, m.Round)
+		u.rnds = append(u.rnds, round)
 		u.mu.Unlock()
 		return nil
 	}); err != nil {
@@ -183,7 +183,7 @@ func TestRoundState_StaleNewRoundPublishesNothing(t *testing.T) {
 	u := watchUpdates(t, h)
 
 	h.StartRound(1)
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // negative check: waiting to confirm nothing else happens
 
 	if n := u.count(); n != 0 {
 		t.Errorf("%d round states for a stale request, want 0", n)
@@ -318,7 +318,7 @@ func TestRoundState_ConnectDoesNotResetStatuses(t *testing.T) {
 	connect(t, h, "Agent-bob")
 
 	eventually(t, "round state for bob", func() bool { return u.count() > before })
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // negative check: waiting to confirm nothing else happens
 	for _, p := range h.GetParticipants() {
 		if p.Name == "Agent-alice" && p.Status != hub.StatusSubmitted {
 			t.Errorf("alice's status = %q after bob connected, want submitted", p.Status)

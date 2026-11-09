@@ -282,7 +282,7 @@ func TestAppModel_NewRound_DoublePressAdvancesOnce(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	assert.Eventually(t, func() bool { return coord.Round() == 2 }, 2*time.Second, 5*time.Millisecond)
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // negative check: waiting to confirm nothing else happens
 	assert.Equal(t, 2, coord.Round())
 	rc := 0
 	for _, msg := range coord.Transcript() {

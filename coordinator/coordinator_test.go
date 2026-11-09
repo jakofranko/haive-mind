@@ -178,10 +178,10 @@ func TestNewRound_StaleOrRepeatedRequestIsIgnored(t *testing.T) {
 	h.StartRound(1)
 	eventually(t, "round 2", func() bool { return c.Round() == 2 })
 
-	h.StartRound(1) // repeat of the request that already ended round 1
-	h.StartRound(0) // stale
-	h.StartRound(5) // names a round that is not the current one
-	time.Sleep(150 * time.Millisecond)
+	h.StartRound(1)                    // repeat of the request that already ended round 1
+	h.StartRound(0)                    // stale
+	h.StartRound(5)                    // names a round that is not the current one
+	time.Sleep(300 * time.Millisecond) // negative check: waiting to confirm nothing else happens
 
 	if got := c.Round(); got != 2 {
 		t.Errorf("Round() = %d, want 2", got)

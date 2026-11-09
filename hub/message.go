@@ -93,14 +93,14 @@ func NewRoundState(round int, ids []string) *Message {
 	return NewMessage(MessageTypeRoundState, "hub", string(payload), round)
 }
 
-// RoundStateFlaggedIDs returns the flagged Participant ids carried by a Round
-// state; the round is the message's Round.
-func (m Message) RoundStateFlaggedIDs() ([]string, error) {
-	var ids []string
+// RoundState returns the whole concept a Round state message carries: the
+// round and the flagged Participant ids. Read both from here rather than
+// reaching into the message's Round field separately.
+func (m Message) RoundState() (round int, ids []string, err error) {
 	if err := json.Unmarshal([]byte(m.Content), &ids); err != nil {
-		return nil, err
+		return 0, nil, err
 	}
-	return ids, nil
+	return m.Round, ids, nil
 }
 
 func (m *Message) ToJSON() ([]byte, error) {

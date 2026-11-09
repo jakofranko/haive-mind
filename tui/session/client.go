@@ -98,8 +98,8 @@ func (c *Client) receive(msg *hub.Message) error {
 	case hub.MessageTypeRoundChange:
 		c.inbox.Push(RoundEvent{Round: msg.Round})
 	case hub.MessageTypeRoundState:
-		if ids, err := msg.RoundStateFlaggedIDs(); err == nil {
-			c.inbox.Push(RoundStateEvent{Round: msg.Round, IDs: ids})
+		if round, ids, err := msg.RoundState(); err == nil {
+			c.inbox.Push(RoundStateEvent{Round: round, IDs: ids})
 		}
 	case hub.MessageTypeExportComplete:
 		c.inbox.Push(ExportEvent{Path: msg.Content})

@@ -1,6 +1,7 @@
 package participant
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -69,7 +70,7 @@ func TestFlagged_NoticeIsShownOncePerFlag(t *testing.T) {
 	m = step(m, flagUpdate("Agent-alice"))
 	m = step(m, flagUpdate("Agent-alice", "Agent-bob"))
 
-	assert.Equal(t, 1, countOccurrences(visible(m.transcript.View()), "asked you to revise"))
+	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
 }
 
 // #53: a flagged participant whose new session has never seen the flag is told
@@ -81,17 +82,7 @@ func TestFlagged_ReconnectingSessionIsToldOnce(t *testing.T) {
 	m = step(m, flagUpdate("Agent-alice"))
 	m = step(m, flagUpdate("Agent-alice"))
 
-	assert.Equal(t, 1, countOccurrences(visible(m.transcript.View()), "asked you to revise"))
-}
-
-func countOccurrences(s, sub string) int {
-	n := 0
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			n++
-		}
-	}
-	return n
+	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
 }
 
 // Everyone sees who is flagged, and the announcement itself is not chat.
@@ -148,7 +139,7 @@ func TestRoundState_RepeatDoesNotRenotifyAFlaggedParticipant(t *testing.T) {
 	m = step(m, roundState(1, "Agent-alice"))
 	m = step(m, roundState(1, "Agent-alice"))
 
-	assert.Equal(t, 1, countOccurrences(visible(m.transcript.View()), "asked you to revise"))
+	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
 }
 
 // A participant who is newly flagged is told once, and the round is set.
@@ -157,6 +148,6 @@ func TestRoundState_NewlyFlaggedParticipantIsToldOnce(t *testing.T) {
 
 	m = step(m, roundState(2, "Agent-alice"))
 
-	assert.Equal(t, 1, countOccurrences(visible(m.transcript.View()), "asked you to revise"))
+	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
 	assert.Contains(t, visible(m.View()), "Participants (Round 2")
 }
