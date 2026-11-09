@@ -84,6 +84,14 @@ _Avoid_: Log, history, chat, conversation, record
 A complete cycle: host sends directive → agent replies → participants respond → host aggregates → agent replies to aggregate. Identified by an incrementing integer owned by the coordinator.
 _Avoid_: Turn, cycle, iteration, phase
 
+**Round state**:
+The coordinator's announcement of the current round and who is flagged. Published whenever either changes and whenever someone connects, so a session that joins late starts correct. It never resets anyone's status. Carries `MessageTypeRoundState`.
+_Avoid_: Snapshot, sync, session state
+
+**Round change**:
+The event that a new round has started. Participants go back to idle. Distinct from Round state, which says where things stand without starting anything. Carries `MessageTypeRoundChange`.
+_Avoid_: New round (that is the host's request to start one)
+
 **Session**:
 A single SSH connection from a host or participant to the server. Each session runs one TUI (host or participant).
 _Avoid_: Connection, meeting, run
@@ -99,7 +107,7 @@ What a participant is doing in the round. One of: `idle`, `typing` (composing a 
 _Avoid_: State, phase, condition
 
 **Flag** (revision request):
-The host's decision that a participant should revise their response. Shown to everyone as `revise`. Cleared when that participant resubmits, when the host resolves, or when the round ends. The host decides what is a conflict; the model is never asked to. Raised and withdrawn with `MessageTypeFlag` and `MessageTypeUnflag`; the current set is published as `MessageTypeFlagUpdate`.
+The host's decision that a participant should revise their response. Shown to everyone as `revise`. Cleared when that participant resubmits, when the host resolves, or when the round ends. The host decides what is a conflict; the model is never asked to. Raised and withdrawn with `MessageTypeFlag` and `MessageTypeUnflag`; the current set is published in the Round state.
 _Avoid_: Conflict, dispute, rejection
 
 **Resolve**:
