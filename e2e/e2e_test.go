@@ -316,21 +316,31 @@ func TestFullRound(t *testing.T) {
 		t.Fatal(err)
 	}
 	var doc struct {
-		Messages []struct{ Content string }
+		Messages []struct{ Type, Content string }
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("exported transcript is not valid JSON: %v", err)
 	}
+	agentRepliesChecked := 0
 	for _, want := range []string{"hello", "AGENTREPLY-hello", "alicesays-postgres", "bobsays-sqlite", "AGENTREPLY-AGENTREPLY-Several"} {
 		found := false
 		for _, m := range doc.Messages {
 			if strings.Contains(m.Content, want) {
 				found = true
+				if strings.HasPrefix(want, "AGENTREPLY-") {
+					agentRepliesChecked++
+					if m.Type != "agent_reply" {
+						t.Errorf("exported agent message %q has type %q, want agent_reply", want, m.Type)
+					}
+				}
 			}
 		}
 		if !found {
 			t.Errorf("exported transcript has no message containing %q", want)
 		}
+	}
+	if agentRepliesChecked == 0 {
+		t.Error("exported transcript has no agent_reply message to check")
 	}
 
 	// Every call reached its runner exactly once: the directive, one
@@ -521,7 +531,7 @@ func TestGracefulShutdownSavesTranscript(t *testing.T) {
 		t.Fatalf("no transcript saved on shutdown: %v", err)
 	}
 	var doc struct {
-		Messages []struct{ Content string }
+		Messages []struct{ Type, Content string }
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("saved transcript is not valid JSON: %v", err)

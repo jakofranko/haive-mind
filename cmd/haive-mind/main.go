@@ -64,6 +64,7 @@ func main() {
 		for _, msgType := range []hub.MessageType{
 			hub.MessageTypeDirective,
 			hub.MessageTypeResponse,
+			hub.MessageTypeAgentReply,
 			hub.MessageTypeSystem,
 			hub.MessageTypeAggregate,
 			hub.MessageTypeNewRound,

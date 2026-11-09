@@ -84,7 +84,7 @@ func TestHub_RequestAggregate(t *testing.T) {
 	ctx := context.Background()
 	aggregatesReceived := make(chan *Message, 10)
 
-	sub, err := hubChans.Subscribe(ctx, MessageTypeAggregate, func(msg *Message) error {
+	sub, err := hubChans.Subscribe(ctx, MessageTypeAggregateRequest, func(msg *Message) error {
 		aggregatesReceived <- msg
 		return nil
 	})
@@ -97,7 +97,7 @@ func TestHub_RequestAggregate(t *testing.T) {
 	select {
 	case received := <-aggregatesReceived:
 		assert.Equal(t, 1, received.Round)
-		assert.Equal(t, MessageTypeAggregate, received.Type)
+		assert.Equal(t, MessageTypeAggregateRequest, received.Type)
 	case <-time.After(500 * time.Millisecond):
 		t.Error("Timeout waiting for aggregate")
 	}
@@ -241,7 +241,7 @@ func TestHub_SetAgentRunner(t *testing.T) {
 	hubChans.SetAgentRunner(mockRunner)
 
 	agentReplies := make(chan *Message, 10)
-	sub, err := hubChans.Subscribe(ctx, MessageTypeResponse, func(msg *Message) error {
+	sub, err := hubChans.Subscribe(ctx, MessageTypeAgentReply, func(msg *Message) error {
 		agentReplies <- msg
 		return nil
 	})

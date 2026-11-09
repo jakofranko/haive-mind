@@ -2,7 +2,6 @@ package participant
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -185,14 +184,12 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 	sub, err := m.hub.SubscribeTypes(ctx, []hub.MessageType{
 		hub.MessageTypeDirective,
 		hub.MessageTypeResponse,
+		hub.MessageTypeAgentReply,
 		hub.MessageTypeSystem,
 		hub.MessageTypeAggregate,
 		hub.MessageTypeAggregateDraft,
-		hub.MessageTypeConflictUpdate,
+		hub.MessageTypeFlagUpdate,
 	}, func(msg *hub.Message) error {
-		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
-			return nil // a signal to the coordinator, not transcript content
-		}
 		m.msgCh.Push(msg)
 		return nil
 	})
@@ -269,8 +266,8 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
-		if msg.Type == hub.MessageTypeConflictUpdate {
-			m.applyFlags(msg.Content)
+		if msg.Type == hub.MessageTypeFlagUpdate {
+			m.applyFlags(hub.Message(msg))
 			return m, m.listenForMessages()
 		}
 		m.transcript.AddMessage(hub.Message(msg))
@@ -534,9 +531,9 @@ func (m *ParticipantModel) SubscriptionsReady() <-chan struct{} {
 // to revise. When this participant newly becomes flagged they are told, their
 // last answer comes back for editing (unless they are already typing), and
 // they are idle again.
-func (m *ParticipantModel) applyFlags(content string) {
-	var ids []string
-	if json.Unmarshal([]byte(content), &ids) != nil {
+func (m *ParticipantModel) applyFlags(msg hub.Message) {
+	ids, err := msg.FlaggedIDs()
+	if err != nil {
 		return
 	}
 	m.sidebar.SetFlagged(ids)

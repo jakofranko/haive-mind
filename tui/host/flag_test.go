@@ -1,7 +1,6 @@
 package host
 
 import (
-	"encoding/json"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,7 +12,7 @@ import (
 // participants pane focused and the cursor on Alice.
 func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 	t.Helper()
-	h, sent := sentRig(t, hub.MessageTypeConflictFlag, hub.MessageTypeConflictResolve, hub.MessageTypeAggregate)
+	h, sent := sentRig(t, hub.MessageTypeFlag, hub.MessageTypeUnflag, hub.MessageTypeResolve, hub.MessageTypeAggregateRequest)
 	m := NewAppModel(h)
 	updated, _ := m.Update(initialParticipantsMsg{
 		{Name: "host", DisplayName: "TestHost", Status: hub.StatusIdle},
@@ -26,8 +25,7 @@ func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 }
 
 func flaggedUpdate(ids ...string) hubMessageMsg {
-	b, _ := json.Marshal(ids)
-	return hubMessageMsg(*hub.NewMessage(hub.MessageTypeConflictUpdate, "hub", string(b), 1))
+	return hubMessageMsg(*hub.NewFlagUpdate(1, ids))
 }
 
 func runAll(m *AppModel, cmd tea.Cmd) *AppModel { return run(m, cmd) }
@@ -44,15 +42,15 @@ func TestHost_CFlagsAndUnflagsTheSelectedParticipant(t *testing.T) {
 
 	got := sent()
 	if assert.Len(t, got, 2) {
-		assert.Equal(t, hub.MessageTypeConflictFlag, got[0].Type)
+		assert.Equal(t, hub.MessageTypeFlag, got[0].Type)
 		assert.Equal(t, "Agent-alice", got[0].To)
-		assert.Equal(t, "flag", got[0].Content)
-		assert.Equal(t, "unflag", got[1].Content)
+		assert.Equal(t, hub.MessageTypeUnflag, got[1].Type)
+		assert.Equal(t, "Agent-alice", got[1].To)
 	}
 }
 
 func TestHost_CannotFlagTheHost(t *testing.T) {
-	h, sent := sentRig(t, hub.MessageTypeConflictFlag)
+	h, sent := sentRig(t, hub.MessageTypeFlag, hub.MessageTypeUnflag)
 	m := NewAppModel(h)
 	updated, _ := m.Update(initialParticipantsMsg{{Name: "host", DisplayName: "TestHost", Status: hub.StatusIdle}})
 	m = updated.(*AppModel)
@@ -76,8 +74,8 @@ func TestHost_FlaggedParticipantShowsRevise(t *testing.T) {
 	assert.NotContains(t, visible(m.View()), "revise")
 }
 
-// The conflict announcement is not transcript content.
-func TestHost_ConflictUpdateIsNotShownInTheTranscript(t *testing.T) {
+// The flag update is not transcript content.
+func TestHost_FlagUpdateIsNotShownInTheTranscript(t *testing.T) {
 	m, _ := hostWithAlice(t)
 	updated, _ := m.Update(flaggedUpdate("Agent-alice"))
 	m = updated.(*AppModel)
@@ -97,7 +95,7 @@ func TestHost_ResolveButtonSendsResolve(t *testing.T) {
 
 	got := sent()
 	if assert.Len(t, got, 1) {
-		assert.Equal(t, hub.MessageTypeConflictResolve, got[0].Type)
+		assert.Equal(t, hub.MessageTypeResolve, got[0].Type)
 	}
 }
 
@@ -126,7 +124,7 @@ func TestHost_AggregateWithFlagsWarnsThenContinues(t *testing.T) {
 
 	got := sent()
 	if assert.Len(t, got, 1) {
-		assert.Equal(t, hub.MessageTypeAggregate, got[0].Type)
+		assert.Equal(t, hub.MessageTypeAggregateRequest, got[0].Type)
 	}
 }
 

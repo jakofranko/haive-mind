@@ -2,7 +2,6 @@ package host
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -205,15 +204,13 @@ func (m *AppModel) setupSubscriptions() tea.Cmd {
 	sub, err := m.hub.SubscribeTypes(ctx, []hub.MessageType{
 		hub.MessageTypeDirective,
 		hub.MessageTypeResponse,
+		hub.MessageTypeAgentReply,
 		hub.MessageTypeSystem,
 		hub.MessageTypeAggregate,
 		hub.MessageTypeAggregateDraft,
 		hub.MessageTypeAgentError,
-		hub.MessageTypeConflictUpdate,
+		hub.MessageTypeFlagUpdate,
 	}, func(msg *hub.Message) error {
-		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
-			return nil // a signal to the coordinator, not transcript content
-		}
 		m.msgCh.Push(msg)
 		return nil
 	})
@@ -313,9 +310,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
-		if msg.Type == hub.MessageTypeConflictUpdate {
-			var ids []string
-			if json.Unmarshal([]byte(msg.Content), &ids) == nil {
+		if msg.Type == hub.MessageTypeFlagUpdate {
+			if ids, err := hub.Message(msg).FlaggedIDs(); err == nil {
 				m.participants.SetFlagged(ids)
 			}
 			return m, m.listenForMessages()
@@ -598,7 +594,7 @@ func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 		// The coordinator owns the round number; we adopt it on RoundChange.
 		m.hub.StartRound(m.round + 1)
 	case "[Resolve]":
-		m.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeConflictResolve, "host", "", m.round))
+		m.hub.Send(context.Background(), hub.NewResolve(m.round))
 	case "[Export]":
 		exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
 		m.hub.Export(exportPath)
@@ -688,12 +684,12 @@ func (m *AppModel) toggleFlag() (tea.Model, tea.Cmd) {
 	if !ok || p.Name == "host" {
 		return m, nil
 	}
-	action := "flag"
+	var msg *hub.Message
 	if m.participants.IsFlagged(p.Name) {
-		action = "unflag"
+		msg = hub.NewUnflag(m.round, p.Name)
+	} else {
+		msg = hub.NewFlag(m.round, p.Name)
 	}
-	msg := hub.NewMessage(hub.MessageTypeConflictFlag, "host", action, m.round)
-	msg.To = p.Name
 	m.hub.Send(context.Background(), msg)
 	return m, nil
 }

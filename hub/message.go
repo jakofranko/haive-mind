@@ -22,8 +22,10 @@ type MessageType string
 const (
 	MessageTypeDirective        MessageType = "directive"
 	MessageTypeResponse         MessageType = "response"
+	MessageTypeAgentReply       MessageType = "agent_reply"
 	MessageTypeSystem           MessageType = "system"
 	MessageTypeAggregate        MessageType = "aggregate"
+	MessageTypeAggregateRequest MessageType = "aggregate_request"
 	MessageTypeNewRound         MessageType = "new_round"
 	MessageTypeRoundChange      MessageType = "round_change"
 	MessageTypeExport           MessageType = "export"
@@ -32,9 +34,10 @@ const (
 	MessageTypeSynthesisRequest MessageType = "synthesis_request"
 	MessageTypeAggregateDraft   MessageType = "aggregate_draft"
 	MessageTypeAgentError       MessageType = "agent_error"
-	MessageTypeConflictFlag     MessageType = "conflict_flag"
-	MessageTypeConflictResolve  MessageType = "conflict_resolve"
-	MessageTypeConflictUpdate   MessageType = "conflict_update"
+	MessageTypeFlag             MessageType = "flag"
+	MessageTypeUnflag           MessageType = "unflag"
+	MessageTypeResolve          MessageType = "resolve"
+	MessageTypeFlagUpdate       MessageType = "flag_update"
 )
 
 type Message struct {
@@ -60,6 +63,43 @@ func NewMessage(msgType MessageType, from, content string, round int) *Message {
 		Timestamp: time.Now(),
 		Round:     round,
 	}
+}
+
+// NewFlag is the host asking the participant with id target to revise.
+func NewFlag(round int, target string) *Message {
+	m := NewMessage(MessageTypeFlag, "host", "", round)
+	m.To = target
+	return m
+}
+
+// NewUnflag is the host withdrawing the Flag on the participant with id target.
+func NewUnflag(round int, target string) *Message {
+	m := NewMessage(MessageTypeUnflag, "host", "", round)
+	m.To = target
+	return m
+}
+
+// NewResolve is the host clearing every Flag at once.
+func NewResolve(round int) *Message {
+	return NewMessage(MessageTypeResolve, "host", "", round)
+}
+
+// NewFlagUpdate publishes the current set of flagged Participant ids.
+func NewFlagUpdate(round int, ids []string) *Message {
+	if ids == nil {
+		ids = []string{}
+	}
+	payload, _ := json.Marshal(ids)
+	return NewMessage(MessageTypeFlagUpdate, "hub", string(payload), round)
+}
+
+// FlaggedIDs returns the flagged Participant ids carried by a Flag update.
+func (m Message) FlaggedIDs() ([]string, error) {
+	var ids []string
+	if err := json.Unmarshal([]byte(m.Content), &ids); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 func (m *Message) ToJSON() ([]byte, error) {

@@ -6,7 +6,6 @@ package coordinator
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
@@ -25,10 +24,6 @@ type Coordinator struct {
 	flagged    map[string]bool // participant ids the host asked to revise
 }
 
-// aggregateRequest is the Content of the signal message that asks the
-// coordinator to compose an aggregate (see hub.RequestAggregate).
-const aggregateRequest = "aggregate_request"
-
 func New(h hub.Hub) *Coordinator {
 	return &Coordinator{
 		hub:        h,
@@ -43,6 +38,7 @@ func New(h hub.Hub) *Coordinator {
 var transcriptTypes = []hub.MessageType{
 	hub.MessageTypeDirective,
 	hub.MessageTypeResponse,
+	hub.MessageTypeAgentReply,
 	hub.MessageTypeSystem,
 	hub.MessageTypeAggregate,
 	hub.MessageTypeAggregateDraft,
@@ -65,10 +61,11 @@ func (c *Coordinator) Start(ctx context.Context) error {
 	}{
 		{hub.MessageTypeResponse, c.trackResponse},
 		{hub.MessageTypeDirective, c.trackDirective},
-		{hub.MessageTypeAggregate, c.handleAggregate},
+		{hub.MessageTypeAggregateRequest, c.handleAggregateRequest},
 		{hub.MessageTypeNewRound, c.handleNewRound},
-		{hub.MessageTypeConflictFlag, c.handleFlag},
-		{hub.MessageTypeConflictResolve, c.handleResolve},
+		{hub.MessageTypeFlag, c.handleFlag},
+		{hub.MessageTypeUnflag, c.handleUnflag},
+		{hub.MessageTypeResolve, c.handleResolve},
 	} {
 		if _, err := c.hub.Subscribe(ctx, s.typ, s.handler); err != nil {
 			return err
@@ -116,21 +113,29 @@ func (c *Coordinator) flaggedLocked() []string {
 	return ids
 }
 
-// handleFlag flags or unflags the participant named in To.
+// handleFlag flags the participant named in To.
 func (c *Coordinator) handleFlag(msg *hub.Message) error {
 	c.mu.Lock()
 	changed := false
-	switch msg.Content {
-	case "flag":
-		if msg.To != "" && !c.flagged[msg.To] {
-			c.flagged[msg.To] = true
-			changed = true
-		}
-	case "unflag":
-		if c.flagged[msg.To] {
-			delete(c.flagged, msg.To)
-			changed = true
-		}
+	if msg.To != "" && !c.flagged[msg.To] {
+		c.flagged[msg.To] = true
+		changed = true
+	}
+	round := c.round
+	c.mu.Unlock()
+	if changed {
+		c.publishFlags(round)
+	}
+	return nil
+}
+
+// handleUnflag withdraws the flag on the participant named in To.
+func (c *Coordinator) handleUnflag(msg *hub.Message) error {
+	c.mu.Lock()
+	changed := false
+	if c.flagged[msg.To] {
+		delete(c.flagged, msg.To)
+		changed = true
 	}
 	round := c.round
 	c.mu.Unlock()
@@ -158,8 +163,7 @@ func (c *Coordinator) publishFlags(round int) {
 	c.mu.Lock()
 	ids := c.flaggedLocked()
 	c.mu.Unlock()
-	payload, _ := json.Marshal(ids)
-	c.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeConflictUpdate, "hub", string(payload), round))
+	c.hub.Send(context.Background(), hub.NewFlagUpdate(round, ids))
 }
 
 // trackDirective remembers the question the host asked in each round.
@@ -178,12 +182,9 @@ func senderID(msg *hub.Message) string {
 	return msg.From
 }
 
-// trackResponse remembers each participant's latest (non-agent) response by
+// trackResponse remembers each participant's latest response by
 // round, and lifts that participant's revision flag.
 func (c *Coordinator) trackResponse(msg *hub.Message) error {
-	if msg.From == "agent" {
-		return nil
-	}
 	id := senderID(msg)
 	c.mu.Lock()
 	replaced := false
@@ -207,13 +208,10 @@ func (c *Coordinator) trackResponse(msg *hub.Message) error {
 	return nil
 }
 
-// handleAggregate reacts only to aggregate requests, asking the hub to
-// synthesize this round's responses. The host's confirmed aggregate has real
-// content, so it is ignored here: that is what stops the loop.
-func (c *Coordinator) handleAggregate(msg *hub.Message) error {
-	if msg.Content != aggregateRequest {
-		return nil
-	}
+// handleAggregateRequest asks the hub to synthesize this round's responses.
+// The host's confirmed Aggregate is a different message type, so it never
+// lands here: that is what stops the loop.
+func (c *Coordinator) handleAggregateRequest(msg *hub.Message) error {
 	c.mu.Lock()
 	round := c.round
 	question := c.directives[round]

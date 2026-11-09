@@ -1,7 +1,6 @@
 package participant
 
 import (
-	"encoding/json"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,8 +9,7 @@ import (
 )
 
 func flagUpdate(ids ...string) hubMessageMsg {
-	b, _ := json.Marshal(ids)
-	return hubMessageMsg(*hub.NewMessage(hub.MessageTypeConflictUpdate, "hub", string(b), 1))
+	return hubMessageMsg(*hub.NewFlagUpdate(1, ids))
 }
 
 // sized gives the model a screen so View() shows the panes.

@@ -53,7 +53,7 @@ func TestAgentSuccess_PublishesNoError(t *testing.T) {
 	h := NewHub()
 	h.SetAgentRunner(&stubRunner{reply: "fine"})
 	errs := collect(t, h, MessageTypeAgentError)
-	replies := collect(t, h, MessageTypeResponse)
+	replies := collect(t, h, MessageTypeAgentReply)
 	if err := h.Start(); err != nil {
 		t.Fatal(err)
 	}
