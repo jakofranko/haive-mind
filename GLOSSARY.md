@@ -84,6 +84,10 @@ _Avoid_: Log, history, chat, conversation, record
 A complete cycle: host sends directive → agent replies → participants respond → host aggregates → agent replies to aggregate. Identified by an incrementing integer owned by the coordinator.
 _Avoid_: Turn, cycle, iteration, phase
 
+**Transcript snapshot**:
+The recorded conversation sent to one session when it connects, with that participant's last response for the current round, if any. An ordinary message addressed to the connecting participant id, published beside Round state; other sessions ignore it. Carries `MessageTypeTranscriptSnapshot`.
+_Avoid_: Replay, history sync
+
 **Round state**:
 The coordinator's announcement of the current round and who is flagged. Published whenever either changes and whenever someone connects, so a session that joins late starts correct. It never resets anyone's status. Carries `MessageTypeRoundState`.
 _Avoid_: Snapshot, sync, session state

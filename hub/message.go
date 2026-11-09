@@ -38,6 +38,8 @@ const (
 	MessageTypeUnflag           MessageType = "unflag"
 	MessageTypeResolve          MessageType = "resolve"
 	MessageTypeRoundState       MessageType = "round_state"
+
+	MessageTypeTranscriptSnapshot MessageType = "transcript_snapshot"
 )
 
 type Message struct {
@@ -101,6 +103,35 @@ func (m Message) RoundState() (round int, ids []string, err error) {
 		return 0, nil, err
 	}
 	return m.Round, ids, nil
+}
+
+// transcriptSnapshot is the payload of a Transcript snapshot message.
+type transcriptSnapshot struct {
+	Messages       []*Message `json:"messages"`
+	LastSubmission *Message   `json:"last_submission,omitempty"`
+}
+
+// NewTranscriptSnapshot is the recorded conversation for the one session with
+// participant id to, plus that participant's last submission for the current
+// round (nil when there is none).
+func NewTranscriptSnapshot(round int, to string, transcript []*Message, last *Message) *Message {
+	if transcript == nil {
+		transcript = []*Message{}
+	}
+	payload, _ := json.Marshal(transcriptSnapshot{Messages: transcript, LastSubmission: last})
+	m := NewMessage(MessageTypeTranscriptSnapshot, "hub", string(payload), round)
+	m.To = to
+	return m
+}
+
+// TranscriptSnapshot returns the whole concept a Transcript snapshot message
+// carries: the recorded messages and the addressee's last submission, or nil.
+func (m Message) TranscriptSnapshot() (transcript []*Message, last *Message, err error) {
+	var s transcriptSnapshot
+	if err := json.Unmarshal([]byte(m.Content), &s); err != nil {
+		return nil, nil, err
+	}
+	return s.Messages, s.LastSubmission, nil
 }
 
 func (m *Message) ToJSON() ([]byte, error) {
