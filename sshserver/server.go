@@ -108,6 +108,15 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 		name:     name,
 	}
 
+	m.admit(s.Context(), session)
+
+	return program
+}
+
+// admit records the session as the current one for its participant id,
+// starts tracking its end, and registers the participant with the hub.
+func (m *sessionManager) admit(ctx context.Context, session *trackedSession) {
+	name, isHost := session.name, session.isHost
 	m.mu.Lock()
 	if isHost {
 		m.hostConnected = true
@@ -117,7 +126,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	}
 	m.mu.Unlock()
 
-	go m.trackSession(s.Context(), session)
+	go m.trackSession(ctx, session)
 
 	// Register participant with hub
 	displayName := m.hub.GetDisplayName(name)
@@ -133,8 +142,6 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	if err := m.hub.RegisterParticipant(p); err != nil {
 		log.Printf("Failed to register participant: %v", err)
 	}
-
-	return program
 }
 
 // trackSession cleans up after a session once its SSH connection ends. It
@@ -147,16 +154,24 @@ func (m *sessionManager) trackSession(ctx context.Context, session *trackedSessi
 	session.program.Kill() // the middleware also quits it; Kill is a no-op once it has exited
 	session.model.Close()
 
+	// Only the session still tracked for this id may unregister it: a newer
+	// session for the same id has replaced this one and must stay registered.
+	// The check and the unregister share the lock so a reconnect cannot slip between them.
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if session.isHost {
+		if m.hostSession != session {
+			return
+		}
 		m.hostConnected = false
 		m.hostSession = nil
 	} else {
+		if m.participantSessions[session.name] != session {
+			return
+		}
 		delete(m.participantSessions, session.name)
 	}
-	m.mu.Unlock()
 
-	// Unregister participant from hub
 	if err := m.hub.UnregisterParticipant(session.name); err != nil {
 		log.Printf("Failed to unregister participant: %v", err)
 	}
