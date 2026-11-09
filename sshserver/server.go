@@ -64,7 +64,6 @@ func NewServer(h hub.Hub, addr, hostKey string) *ssh.Server {
 type trackedSession struct {
 	program  *tea.Program
 	model    interface{ Close() }
-	cancel   context.CancelFunc
 	username string
 	isHost   bool
 	name     string
@@ -100,13 +99,11 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 		model = participant.NewParticipantModel(m.hub, name, sshUsername)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
 	program := tea.NewProgram(model, append(bubbletea.MakeOptions(s), tea.WithoutSignalHandler())...) // the server, not each session, handles Ctrl+C
 
 	session := &trackedSession{
 		program:  program,
 		model:    model,
-		cancel:   cancel,
 		username: sshUsername,
 		isHost:   isHost,
 		name:     name,
@@ -121,7 +118,7 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	}
 	m.mu.Unlock()
 
-	go m.trackSession(ctx, session)
+	go m.trackSession(s.Context(), session)
 
 	// Register participant with hub
 	displayName := m.hub.GetDisplayName(sshUsername)
@@ -141,8 +138,14 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 	return program
 }
 
+// trackSession cleans up after a session once its SSH connection ends. It
+// waits on the SSH session's context, not on program.Wait(): Wait reads a
+// channel that Run creates, so a Wait called before Run starts (as it is here,
+// since the middleware runs the program after programHandler returns) blocks
+// forever and the end of the session is never processed.
 func (m *sessionManager) trackSession(ctx context.Context, session *trackedSession) {
-	session.program.Wait()
+	<-ctx.Done()
+	session.program.Kill() // the middleware also quits it; Kill is a no-op once it has exited
 	session.model.Close()
 
 	m.mu.Lock()
