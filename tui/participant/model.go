@@ -65,7 +65,7 @@ func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantM
 		response:         response.New(),
 		namePrompt:       namePrompt,
 		namePromptActive: false,
-		client:           session.New(hubChans),
+		client:           session.New(hubChans, id),
 	}
 
 	// Pick up text a previous session left unsent.

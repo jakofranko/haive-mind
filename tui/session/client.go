@@ -59,6 +59,7 @@ var transcriptTypes = []hub.MessageType{
 // Client is one session's subscription to the hub. Create it with New.
 type Client struct {
 	hub   hub.Hub
+	id    string // this session's participant id
 	inbox *inbox.Queue[Event]
 	ready chan struct{}
 
@@ -66,12 +67,13 @@ type Client struct {
 	subs []hub.Subscription
 }
 
-// New subscribes to the hub and returns a client. extra lists message types
+// New subscribes to the hub and returns a client for the session with
+// participant id id (hub.HostID for the host). extra lists message types
 // beyond the common transcript ones that this role wants delivered (as
 // MessageEvents). Everything, in every type, arrives in the order the hub sent
 // it, because it all goes through one subscription.
-func New(h hub.Hub, extra ...hub.MessageType) *Client {
-	c := &Client{hub: h, inbox: inbox.New[Event](), ready: make(chan struct{})}
+func New(h hub.Hub, id string, extra ...hub.MessageType) *Client {
+	c := &Client{hub: h, id: id, inbox: inbox.New[Event](), ready: make(chan struct{})}
 
 	types := append([]hub.MessageType{}, transcriptTypes...)
 	types = append(types, hub.MessageTypeRoundState, hub.MessageTypeParticipantEvent, hub.MessageTypeRoundChange)
