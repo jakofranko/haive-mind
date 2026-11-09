@@ -37,7 +37,7 @@ const (
 	MessageTypeFlag             MessageType = "flag"
 	MessageTypeUnflag           MessageType = "unflag"
 	MessageTypeResolve          MessageType = "resolve"
-	MessageTypeConflictUpdate   MessageType = "conflict_update"
+	MessageTypeFlagUpdate       MessageType = "flag_update"
 )
 
 type Message struct {
@@ -82,6 +82,24 @@ func NewUnflag(round int, target string) *Message {
 // NewResolve is the host clearing every Flag at once.
 func NewResolve(round int) *Message {
 	return NewMessage(MessageTypeResolve, "host", "", round)
+}
+
+// NewFlagUpdate publishes the current set of flagged Participant ids.
+func NewFlagUpdate(round int, ids []string) *Message {
+	if ids == nil {
+		ids = []string{}
+	}
+	payload, _ := json.Marshal(ids)
+	return NewMessage(MessageTypeFlagUpdate, "hub", string(payload), round)
+}
+
+// FlaggedIDs returns the flagged Participant ids carried by a Flag update.
+func (m *Message) FlaggedIDs() ([]string, error) {
+	var ids []string
+	if err := json.Unmarshal([]byte(m.Content), &ids); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 func (m *Message) ToJSON() ([]byte, error) {

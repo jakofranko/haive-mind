@@ -2,7 +2,6 @@ package host
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -210,7 +209,7 @@ func (m *AppModel) setupSubscriptions() tea.Cmd {
 		hub.MessageTypeAggregate,
 		hub.MessageTypeAggregateDraft,
 		hub.MessageTypeAgentError,
-		hub.MessageTypeConflictUpdate,
+		hub.MessageTypeFlagUpdate,
 	}, func(msg *hub.Message) error {
 		m.msgCh.Push(msg)
 		return nil
@@ -311,9 +310,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyMsg(msg)
 
 	case hubMessageMsg:
-		if msg.Type == hub.MessageTypeConflictUpdate {
-			var ids []string
-			if json.Unmarshal([]byte(msg.Content), &ids) == nil {
+		if msg.Type == hub.MessageTypeFlagUpdate {
+			if ids, err := (*hub.Message)(&msg).FlaggedIDs(); err == nil {
 				m.participants.SetFlagged(ids)
 			}
 			return m, m.listenForMessages()

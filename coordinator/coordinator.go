@@ -6,7 +6,6 @@ package coordinator
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
@@ -164,8 +163,7 @@ func (c *Coordinator) publishFlags(round int) {
 	c.mu.Lock()
 	ids := c.flaggedLocked()
 	c.mu.Unlock()
-	payload, _ := json.Marshal(ids)
-	c.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeConflictUpdate, "hub", string(payload), round))
+	c.hub.Send(context.Background(), hub.NewFlagUpdate(round, ids))
 }
 
 // trackDirective remembers the question the host asked in each round.

@@ -1,7 +1,6 @@
 package host
 
 import (
-	"encoding/json"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,8 +25,7 @@ func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 }
 
 func flaggedUpdate(ids ...string) hubMessageMsg {
-	b, _ := json.Marshal(ids)
-	return hubMessageMsg(*hub.NewMessage(hub.MessageTypeConflictUpdate, "hub", string(b), 1))
+	return hubMessageMsg(*hub.NewFlagUpdate(1, ids))
 }
 
 func runAll(m *AppModel, cmd tea.Cmd) *AppModel { return run(m, cmd) }
@@ -76,8 +74,8 @@ func TestHost_FlaggedParticipantShowsRevise(t *testing.T) {
 	assert.NotContains(t, visible(m.View()), "revise")
 }
 
-// The conflict announcement is not transcript content.
-func TestHost_ConflictUpdateIsNotShownInTheTranscript(t *testing.T) {
+// The flag update is not transcript content.
+func TestHost_FlagUpdateIsNotShownInTheTranscript(t *testing.T) {
 	m, _ := hostWithAlice(t)
 	updated, _ := m.Update(flaggedUpdate("Agent-alice"))
 	m = updated.(*AppModel)

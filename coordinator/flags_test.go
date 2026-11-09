@@ -2,7 +2,6 @@ package coordinator_test
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -12,7 +11,7 @@ import (
 	"jakofranko/haive-mind/hub"
 )
 
-// updates records every conflict_update the coordinator publishes.
+// updates records every flag_update the coordinator publishes.
 type updates struct {
 	mu   sync.Mutex
 	list [][]string
@@ -21,10 +20,10 @@ type updates struct {
 func watchUpdates(t *testing.T, h hub.Hub) *updates {
 	t.Helper()
 	u := &updates{}
-	if _, err := h.Subscribe(context.Background(), hub.MessageTypeConflictUpdate, func(m *hub.Message) error {
-		var ids []string
-		if err := json.Unmarshal([]byte(m.Content), &ids); err != nil {
-			t.Errorf("conflict_update content %q is not a JSON list: %v", m.Content, err)
+	if _, err := h.Subscribe(context.Background(), hub.MessageTypeFlagUpdate, func(m *hub.Message) error {
+		ids, err := m.FlaggedIDs()
+		if err != nil {
+			t.Errorf("flag_update content %q is not a JSON list: %v", m.Content, err)
 		}
 		u.mu.Lock()
 		u.list = append(u.list, ids)
@@ -81,7 +80,7 @@ func flaggedIs(c *coordinator.Coordinator, want ...string) bool {
 }
 
 // G12: the host flags a participant and everyone is told who is flagged.
-func TestConflict_HostFlagsAndUnflags(t *testing.T) {
+func TestFlag_HostFlagsAndUnflags(t *testing.T) {
 	h, c, _ := newRig(t)
 	u := watchUpdates(t, h)
 
@@ -95,7 +94,7 @@ func TestConflict_HostFlagsAndUnflags(t *testing.T) {
 }
 
 // Flagging someone twice announces once.
-func TestConflict_FlaggingTwiceIsIdempotent(t *testing.T) {
+func TestFlag_FlaggingTwiceIsIdempotent(t *testing.T) {
 	h, c, _ := newRig(t)
 	u := watchUpdates(t, h)
 
@@ -109,7 +108,7 @@ func TestConflict_FlaggingTwiceIsIdempotent(t *testing.T) {
 }
 
 // A flagged participant who resubmits is no longer flagged.
-func TestConflict_ResubmitClearsOnlyThatFlag(t *testing.T) {
+func TestFlag_ResubmitClearsOnlyThatFlag(t *testing.T) {
 	h, c, _ := newRig(t)
 	flag(h, "Agent-alice", true)
 	flag(h, "Agent-bob", true)
@@ -120,7 +119,7 @@ func TestConflict_ResubmitClearsOnlyThatFlag(t *testing.T) {
 	eventually(t, "only bob still flagged", func() bool { return flaggedIs(c, "Agent-bob") })
 }
 
-func TestConflict_ResolveClearsAllFlags(t *testing.T) {
+func TestFlag_ResolveClearsAllFlags(t *testing.T) {
 	h, c, _ := newRig(t)
 	u := watchUpdates(t, h)
 	flag(h, "Agent-alice", true)
@@ -133,7 +132,7 @@ func TestConflict_ResolveClearsAllFlags(t *testing.T) {
 	eventually(t, "empty update published", func() bool { return len(u.last()) == 0 && u.count() >= 3 })
 }
 
-func TestConflict_NewRoundClearsFlags(t *testing.T) {
+func TestFlag_NewRoundClearsFlags(t *testing.T) {
 	h, c, _ := newRig(t)
 	flag(h, "Agent-alice", true)
 	eventually(t, "flagged", func() bool { return flaggedIs(c, "Agent-alice") })
