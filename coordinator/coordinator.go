@@ -25,10 +25,6 @@ type Coordinator struct {
 	flagged    map[string]bool // participant ids the host asked to revise
 }
 
-// aggregateRequest is the Content of the signal message that asks the
-// coordinator to compose an aggregate (see hub.RequestAggregate).
-const aggregateRequest = "aggregate_request"
-
 func New(h hub.Hub) *Coordinator {
 	return &Coordinator{
 		hub:        h,
@@ -65,7 +61,7 @@ func (c *Coordinator) Start(ctx context.Context) error {
 	}{
 		{hub.MessageTypeResponse, c.trackResponse},
 		{hub.MessageTypeDirective, c.trackDirective},
-		{hub.MessageTypeAggregate, c.handleAggregate},
+		{hub.MessageTypeAggregateRequest, c.handleAggregateRequest},
 		{hub.MessageTypeNewRound, c.handleNewRound},
 		{hub.MessageTypeConflictFlag, c.handleFlag},
 		{hub.MessageTypeConflictResolve, c.handleResolve},
@@ -207,13 +203,10 @@ func (c *Coordinator) trackResponse(msg *hub.Message) error {
 	return nil
 }
 
-// handleAggregate reacts only to aggregate requests, asking the hub to
-// synthesize this round's responses. The host's confirmed aggregate has real
-// content, so it is ignored here: that is what stops the loop.
-func (c *Coordinator) handleAggregate(msg *hub.Message) error {
-	if msg.Content != aggregateRequest {
-		return nil
-	}
+// handleAggregateRequest asks the hub to synthesize this round's responses.
+// The host's confirmed Aggregate is a different message type, so it never
+// lands here: that is what stops the loop.
+func (c *Coordinator) handleAggregateRequest(msg *hub.Message) error {
 	c.mu.Lock()
 	round := c.round
 	question := c.directives[round]

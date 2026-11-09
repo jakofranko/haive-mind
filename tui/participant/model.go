@@ -190,9 +190,6 @@ func (m *ParticipantModel) setupSubscriptions() tea.Cmd {
 		hub.MessageTypeAggregateDraft,
 		hub.MessageTypeConflictUpdate,
 	}, func(msg *hub.Message) error {
-		if msg.Type == hub.MessageTypeAggregate && msg.Content == "aggregate_request" {
-			return nil // a signal to the coordinator, not transcript content
-		}
 		m.msgCh.Push(msg)
 		return nil
 	})

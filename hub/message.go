@@ -24,6 +24,7 @@ const (
 	MessageTypeResponse         MessageType = "response"
 	MessageTypeSystem           MessageType = "system"
 	MessageTypeAggregate        MessageType = "aggregate"
+	MessageTypeAggregateRequest MessageType = "aggregate_request"
 	MessageTypeNewRound         MessageType = "new_round"
 	MessageTypeRoundChange      MessageType = "round_change"
 	MessageTypeExport           MessageType = "export"

@@ -181,7 +181,7 @@ func (h *hubImpl) removeHandler(entry *handlerEntry) {
 
 func (h *hubImpl) RequestAggregate(round int) error {
 	// Send an aggregate request event - the host/server will compose and send the actual aggregate
-	msg := NewMessage(MessageTypeAggregate, "hub", "aggregate_request", round)
+	msg := NewMessage(MessageTypeAggregateRequest, "hub", "", round)
 	return h.Send(h.ctx, msg)
 }
 
@@ -389,11 +389,6 @@ func (h *hubImpl) invokeAgent(msg *Message) {
 	h.mu.RUnlock()
 
 	if runner == nil {
-		return
-	}
-
-	// Skip agent invocation for aggregate_request signals
-	if msg.Type == MessageTypeAggregate && msg.Content == "aggregate_request" {
 		return
 	}
 

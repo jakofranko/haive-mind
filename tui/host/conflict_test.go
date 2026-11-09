@@ -13,7 +13,7 @@ import (
 // participants pane focused and the cursor on Alice.
 func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 	t.Helper()
-	h, sent := sentRig(t, hub.MessageTypeConflictFlag, hub.MessageTypeConflictResolve, hub.MessageTypeAggregate)
+	h, sent := sentRig(t, hub.MessageTypeConflictFlag, hub.MessageTypeConflictResolve, hub.MessageTypeAggregateRequest)
 	m := NewAppModel(h)
 	updated, _ := m.Update(initialParticipantsMsg{
 		{Name: "host", DisplayName: "TestHost", Status: hub.StatusIdle},
@@ -126,7 +126,7 @@ func TestHost_AggregateWithFlagsWarnsThenContinues(t *testing.T) {
 
 	got := sent()
 	if assert.Len(t, got, 1) {
-		assert.Equal(t, hub.MessageTypeAggregate, got[0].Type)
+		assert.Equal(t, hub.MessageTypeAggregateRequest, got[0].Type)
 	}
 }
 
