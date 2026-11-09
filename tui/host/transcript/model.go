@@ -105,11 +105,7 @@ func (m *Model) layout() {
 }
 
 func (m *Model) addMessage(msg hub.Message) {
-	rendered := m.renderMarkdown(msg.Content)
-	content := fmt.Sprintf("[%s] %s (Round %d):\n%s\n---\n",
-		msg.Timestamp.Format("15:04:05"), msg.From, msg.Round, rendered)
-
-	m.appendContent(content)
+	m.appendContent(m.format(msg))
 }
 
 // appendContent adds text to the full history and shows the newest end.
@@ -151,7 +147,7 @@ func (m *Model) format(msg hub.Message) string {
 }
 
 // PrependMessages puts older messages, oldest first, before every entry
-// already shown (after the welcome text), and keeps the view where it was.
+// already shown (after the welcome text), and shows the newest end.
 func (m *Model) PrependMessages(msgs []hub.Message) {
 	if len(msgs) == 0 {
 		return
@@ -161,9 +157,8 @@ func (m *Model) PrependMessages(msgs []hub.Message) {
 		older += m.format(msg)
 	}
 	m.content = m.content[:m.headLen] + older + m.content[m.headLen:]
-	offset := m.viewport.YOffset
 	m.viewport.SetContent(m.content)
-	m.viewport.SetYOffset(offset)
+	m.viewport.GotoBottom()
 }
 
 func (m *Model) AddSystemMessage(content string) {

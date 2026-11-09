@@ -73,6 +73,23 @@ func TestSnapshot_GoesBeforeWhatIsAlreadyShown(t *testing.T) {
 	assert.Less(t, strings.Index(screen, "second directive"), strings.Index(screen, "live directive"))
 }
 
+// A live message that arrived before the snapshot, and is also in it, is shown
+// once, after the snapshot's older messages.
+func TestSnapshot_LiveMessageFirst_OlderMessagesGoBeforeIt(t *testing.T) {
+	m, h := catchupRig(t)
+	ctx := context.Background()
+	older, live := recorded("host", "older-entry"), recorded("host", "live-entry")
+
+	h.Send(ctx, live)
+	m = receive(t, m)
+	h.Send(ctx, hub.NewTranscriptSnapshot(1, "Agent-alice", []*hub.Message{older, live}, nil))
+	m = receive(t, m)
+
+	screen := visible(m.View())
+	assert.Equal(t, 1, strings.Count(screen, "live-entry"))
+	assert.Less(t, strings.Index(screen, "older-entry"), strings.Index(screen, "live-entry"))
+}
+
 // A snapshot for someone else changes nothing.
 func TestSnapshot_ForAnotherParticipant_ChangesNothing(t *testing.T) {
 	m, h := catchupRig(t)

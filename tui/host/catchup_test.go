@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +72,33 @@ func TestHost_SnapshotMessagesComeBeforeWhatIsAlreadyShown(t *testing.T) {
 	}
 	if rec > live {
 		t.Errorf("recorded entry is shown after the live one:\n%s", screen)
+	}
+}
+
+// The newest message in the snapshot is on screen once the host is rebuilt,
+// even when the conversation is longer than the pane.
+func TestHost_SnapshotShowsTheNewestMessage(t *testing.T) {
+	var recorded []*hub.Message
+	for i := 0; i < 60; i++ {
+		recorded = append(recorded, hub.NewMessage(hub.MessageTypeDirective, "host", fmt.Sprintf("recorded-%02d", i), 1))
+	}
+	screen := hostAfterSending(t, snapshotFor(recorded...))
+	if !strings.Contains(screen, "recorded-59") {
+		t.Errorf("newest snapshot message is not on screen:\n%s", screen)
+	}
+}
+
+// A live message that arrived before the snapshot, and is also in it, is shown
+// once, after the snapshot's older messages.
+func TestHost_LiveMessageFirst_SnapshotOlderMessagesGoBeforeIt(t *testing.T) {
+	older := hub.NewMessage(hub.MessageTypeDirective, "host", "older-entry", 1)
+	live := hub.NewMessage(hub.MessageTypeAggregate, "hub", "live-entry", 1)
+	screen := hostAfterSending(t, live, snapshotFor(older, live))
+	if n := strings.Count(screen, "live-entry"); n != 1 {
+		t.Fatalf("live-entry shown %d times, want 1:\n%s", n, screen)
+	}
+	if o, l := strings.Index(screen, "older-entry"), strings.Index(screen, "live-entry"); o < 0 || o > l {
+		t.Errorf("older entry should be shown before the live one:\n%s", screen)
 	}
 }
 
