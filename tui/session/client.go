@@ -7,6 +7,7 @@ package session
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"jakofranko/haive-mind/hub"
@@ -73,7 +74,10 @@ func New(h hub.Hub, extra ...hub.MessageType) *Client {
 	types = append(types, extra...)
 
 	sub, err := h.SubscribeTypes(context.Background(), types, c.receive)
-	if err == nil {
+	if err != nil {
+		slog.Error("session client could not subscribe to the hub", "error", err)
+		c.inbox.Close()
+	} else {
 		c.subs = append(c.subs, sub)
 	}
 	close(c.ready)
@@ -133,7 +137,9 @@ func (c *Client) Participants() []hub.Participant {
 }
 
 // Ready is closed once the client's subscriptions are in place, so messages
-// sent after it closes will be delivered.
+// sent after it closes will be delivered. New closes it before it returns. If
+// the subscription failed, the error is logged and the client is already
+// closed: Next reports ok=false immediately.
 func (c *Client) Ready() <-chan struct{} { return c.ready }
 
 // Close unsubscribes from the hub and releases a pending Next. It may be

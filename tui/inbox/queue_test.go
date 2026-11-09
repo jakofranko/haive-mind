@@ -9,19 +9,19 @@ import (
 
 const wait = 2 * time.Second
 
-func popAsync[T any](q *inbox.Queue[T]) <-chan T {
+func nextAsync[T any](q *inbox.Queue[T]) <-chan T {
 	ch := make(chan T, 1)
-	go func() { ch <- q.Pop() }()
+	go func() { v, _ := q.Next(); ch <- v }()
 	return ch
 }
 
-func TestPopBlocksUntilPush(t *testing.T) {
+func TestNextBlocksUntilPush(t *testing.T) {
 	q := inbox.New[int]()
-	got := popAsync(q)
+	got := nextAsync(q)
 
 	select {
 	case v := <-got:
-		t.Fatalf("Pop returned %d before any push", v)
+		t.Fatalf("Next returned %d before any push", v)
 	case <-time.After(50 * time.Millisecond):
 	}
 
@@ -29,21 +29,21 @@ func TestPopBlocksUntilPush(t *testing.T) {
 	select {
 	case v := <-got:
 		if v != 7 {
-			t.Fatalf("Pop = %d, want 7", v)
+			t.Fatalf("Next = %d, want 7", v)
 		}
 	case <-time.After(wait):
-		t.Fatal("Pop did not return after push")
+		t.Fatal("Next did not return after push")
 	}
 }
 
-func TestPopIsFirstInFirstOut(t *testing.T) {
+func TestNextIsFirstInFirstOut(t *testing.T) {
 	q := inbox.New[int]()
 	for i := 0; i < 5; i++ {
 		q.Push(i)
 	}
 	for i := 0; i < 5; i++ {
-		if v := q.Pop(); v != i {
-			t.Fatalf("Pop #%d = %d", i, v)
+		if v, _ := q.Next(); v != i {
+			t.Fatalf("Next #%d = %d", i, v)
 		}
 	}
 }
@@ -64,8 +64,8 @@ func TestPushNeverBlocksOrDrops(t *testing.T) {
 		t.Fatal("Push blocked with no consumer")
 	}
 	for i := 0; i < n; i++ {
-		if v := q.Pop(); v != i {
-			t.Fatalf("Pop #%d = %d (item dropped or reordered)", i, v)
+		if v, _ := q.Next(); v != i {
+			t.Fatalf("Next #%d = %d (item dropped or reordered)", i, v)
 		}
 	}
 }
@@ -107,14 +107,6 @@ func TestNextDeliversItemsPushedBeforeCloseThenReportsClosed(t *testing.T) {
 	}
 	if _, ok := q.Next(); ok {
 		t.Fatal("Next on a drained closed queue must keep reporting closed")
-	}
-}
-
-func TestNextBehavesLikePopWhileOpen(t *testing.T) {
-	q := inbox.New[int]()
-	q.Push(3)
-	if v, ok := q.Next(); !ok || v != 3 {
-		t.Fatalf("Next = (%d, %v), want (3, true)", v, ok)
 	}
 }
 

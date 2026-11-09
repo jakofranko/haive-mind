@@ -243,3 +243,31 @@ func TestCloseUnsubscribesEverything(t *testing.T) {
 		t.Errorf("unsubscribed %d of %d subscriptions", got, want)
 	}
 }
+
+// failingHub embeds a real hub whose SubscribeTypes always fails.
+type failingHub struct{ hub.Hub }
+
+func (failingHub) SubscribeTypes(context.Context, []hub.MessageType, func(*hub.Message) error) (hub.Subscription, error) {
+	return nil, fmt.Errorf("subscribe refused")
+}
+
+func TestFailedSubscriptionClosesTheClient(t *testing.T) {
+	c := session.New(failingHub{Hub: startedHub(t)})
+	defer c.Close()
+
+	select {
+	case <-c.Ready():
+	case <-time.After(wait):
+		t.Fatal("Ready never closed")
+	}
+	done := make(chan bool, 1)
+	go func() { _, ok := c.Next(); done <- ok }()
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("Next reported an event from a client that never subscribed")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Next blocked on a client whose subscription failed")
+	}
+}

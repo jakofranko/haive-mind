@@ -1,5 +1,5 @@
 // Package inbox provides an unbounded FIFO queue for handing hub messages to
-// a TUI model. Push never blocks and never drops; Pop blocks until an item
+// a TUI model. Push never blocks and never drops; Next blocks until an item
 // is available. It replaces fixed-size channels whose senders had to choose
 // between blocking the hub and silently dropping messages.
 package inbox
@@ -41,14 +41,6 @@ func (q *Queue[T]) Close() {
 	}
 	q.closed = true
 	close(q.done)
-}
-
-// Pop removes and returns the oldest item, blocking until one is available.
-// On a closed, drained queue it returns the zero value instead of blocking;
-// callers that must tell that apart from a real item should use Next.
-func (q *Queue[T]) Pop() T {
-	v, _ := q.Next()
-	return v
 }
 
 // Next removes and returns the oldest item with ok=true, blocking until one

@@ -45,12 +45,14 @@ func TestHost_ExportCompleteShowsWhereTheFileWent(t *testing.T) {
 	assert.Contains(t, visible(m.View()), "Exported to out/transcript.json")
 }
 
-// Closing the model ends a wait that is blocked on the next event.
+// Closing the model ends a wait on the next event. The wait command exposes no
+// signal that it has begun blocking, so the test does not try to order the two:
+// Close releases a wait already blocked in Next, and a wait that starts after
+// Close sees a closed client and returns at once. Both orderings must yield nil.
 func TestHost_CloseEndsAPendingWait(t *testing.T) {
 	m := NewAppModel(startedHub(t))
 	res := make(chan tea.Msg, 1)
 	go func() { res <- m.waitForEvent()() }()
-	time.Sleep(50 * time.Millisecond)
 	m.Close()
 
 	select {
