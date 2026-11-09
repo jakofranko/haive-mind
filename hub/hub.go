@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -83,6 +84,8 @@ type hubImpl struct {
 	mu           sync.RWMutex
 	handlers     map[MessageType][]*handlerEntry
 	participants map[string]*Participant
+	joined       map[string]int // join sequence per registered participant, for a stable order
+	joinSeq      int
 	displayNames map[string]string
 	drafts       map[string]string
 	agentRunner  agent.Runner
@@ -104,6 +107,7 @@ func NewHub() *hubImpl {
 	return &hubImpl{
 		handlers:     make(map[MessageType][]*handlerEntry),
 		participants: make(map[string]*Participant),
+		joined:       make(map[string]int),
 		displayNames: make(map[string]string),
 		drafts:       make(map[string]string),
 		agentRunner:  agent.NewDefaultRunner(),
@@ -197,6 +201,10 @@ func (h *hubImpl) RegisterParticipant(p *Participant) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	if _, known := h.joined[p.Name]; !known {
+		h.joinSeq++
+		h.joined[p.Name] = h.joinSeq
+	}
 	h.participants[p.Name] = p
 
 	event := NewParticipantEvent(p.Name, p.DisplayName, p.Status, p.Round, ParticipantEventConnect)
@@ -230,6 +238,7 @@ func (h *hubImpl) UnregisterParticipant(name string) error {
 
 	if p, ok := h.participants[name]; ok {
 		delete(h.participants, name)
+		delete(h.joined, name)
 
 		event := NewParticipantEvent(p.Name, p.DisplayName, StatusDisconnected, p.Round, ParticipantEventDisconnect)
 		h.broadcastLocked(MessageTypeParticipantEvent, event)
@@ -435,6 +444,7 @@ func (h *hubImpl) GetParticipants() []*Participant {
 	for _, p := range h.participants {
 		participants = append(participants, p)
 	}
+	sort.Slice(participants, func(i, j int) bool { return h.joined[participants[i].Name] < h.joined[participants[j].Name] })
 	return participants
 }
 
