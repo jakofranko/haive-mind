@@ -13,7 +13,7 @@ import (
 // participants pane focused and the cursor on Alice.
 func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 	t.Helper()
-	h, sent := sentRig(t, hub.MessageTypeConflictFlag, hub.MessageTypeConflictResolve, hub.MessageTypeAggregateRequest)
+	h, sent := sentRig(t, hub.MessageTypeFlag, hub.MessageTypeUnflag, hub.MessageTypeResolve, hub.MessageTypeAggregateRequest)
 	m := NewAppModel(h)
 	updated, _ := m.Update(initialParticipantsMsg{
 		{Name: "host", DisplayName: "TestHost", Status: hub.StatusIdle},
@@ -44,15 +44,15 @@ func TestHost_CFlagsAndUnflagsTheSelectedParticipant(t *testing.T) {
 
 	got := sent()
 	if assert.Len(t, got, 2) {
-		assert.Equal(t, hub.MessageTypeConflictFlag, got[0].Type)
+		assert.Equal(t, hub.MessageTypeFlag, got[0].Type)
 		assert.Equal(t, "Agent-alice", got[0].To)
-		assert.Equal(t, "flag", got[0].Content)
-		assert.Equal(t, "unflag", got[1].Content)
+		assert.Equal(t, hub.MessageTypeUnflag, got[1].Type)
+		assert.Equal(t, "Agent-alice", got[1].To)
 	}
 }
 
 func TestHost_CannotFlagTheHost(t *testing.T) {
-	h, sent := sentRig(t, hub.MessageTypeConflictFlag)
+	h, sent := sentRig(t, hub.MessageTypeFlag, hub.MessageTypeUnflag)
 	m := NewAppModel(h)
 	updated, _ := m.Update(initialParticipantsMsg{{Name: "host", DisplayName: "TestHost", Status: hub.StatusIdle}})
 	m = updated.(*AppModel)
@@ -97,7 +97,7 @@ func TestHost_ResolveButtonSendsResolve(t *testing.T) {
 
 	got := sent()
 	if assert.Len(t, got, 1) {
-		assert.Equal(t, hub.MessageTypeConflictResolve, got[0].Type)
+		assert.Equal(t, hub.MessageTypeResolve, got[0].Type)
 	}
 }
 

@@ -34,8 +34,9 @@ const (
 	MessageTypeSynthesisRequest MessageType = "synthesis_request"
 	MessageTypeAggregateDraft   MessageType = "aggregate_draft"
 	MessageTypeAgentError       MessageType = "agent_error"
-	MessageTypeConflictFlag     MessageType = "conflict_flag"
-	MessageTypeConflictResolve  MessageType = "conflict_resolve"
+	MessageTypeFlag             MessageType = "flag"
+	MessageTypeUnflag           MessageType = "unflag"
+	MessageTypeResolve          MessageType = "resolve"
 	MessageTypeConflictUpdate   MessageType = "conflict_update"
 )
 
@@ -62,6 +63,25 @@ func NewMessage(msgType MessageType, from, content string, round int) *Message {
 		Timestamp: time.Now(),
 		Round:     round,
 	}
+}
+
+// NewFlag is the host asking the participant with id target to revise.
+func NewFlag(round int, target string) *Message {
+	m := NewMessage(MessageTypeFlag, "host", "", round)
+	m.To = target
+	return m
+}
+
+// NewUnflag is the host withdrawing the Flag on the participant with id target.
+func NewUnflag(round int, target string) *Message {
+	m := NewMessage(MessageTypeUnflag, "host", "", round)
+	m.To = target
+	return m
+}
+
+// NewResolve is the host clearing every Flag at once.
+func NewResolve(round int) *Message {
+	return NewMessage(MessageTypeResolve, "host", "", round)
 }
 
 func (m *Message) ToJSON() ([]byte, error) {

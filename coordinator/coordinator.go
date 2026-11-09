@@ -64,8 +64,9 @@ func (c *Coordinator) Start(ctx context.Context) error {
 		{hub.MessageTypeDirective, c.trackDirective},
 		{hub.MessageTypeAggregateRequest, c.handleAggregateRequest},
 		{hub.MessageTypeNewRound, c.handleNewRound},
-		{hub.MessageTypeConflictFlag, c.handleFlag},
-		{hub.MessageTypeConflictResolve, c.handleResolve},
+		{hub.MessageTypeFlag, c.handleFlag},
+		{hub.MessageTypeUnflag, c.handleUnflag},
+		{hub.MessageTypeResolve, c.handleResolve},
 	} {
 		if _, err := c.hub.Subscribe(ctx, s.typ, s.handler); err != nil {
 			return err
@@ -113,21 +114,29 @@ func (c *Coordinator) flaggedLocked() []string {
 	return ids
 }
 
-// handleFlag flags or unflags the participant named in To.
+// handleFlag flags the participant named in To.
 func (c *Coordinator) handleFlag(msg *hub.Message) error {
 	c.mu.Lock()
 	changed := false
-	switch msg.Content {
-	case "flag":
-		if msg.To != "" && !c.flagged[msg.To] {
-			c.flagged[msg.To] = true
-			changed = true
-		}
-	case "unflag":
-		if c.flagged[msg.To] {
-			delete(c.flagged, msg.To)
-			changed = true
-		}
+	if msg.To != "" && !c.flagged[msg.To] {
+		c.flagged[msg.To] = true
+		changed = true
+	}
+	round := c.round
+	c.mu.Unlock()
+	if changed {
+		c.publishFlags(round)
+	}
+	return nil
+}
+
+// handleUnflag withdraws the flag on the participant named in To.
+func (c *Coordinator) handleUnflag(msg *hub.Message) error {
+	c.mu.Lock()
+	changed := false
+	if c.flagged[msg.To] {
+		delete(c.flagged, msg.To)
+		changed = true
 	}
 	round := c.round
 	c.mu.Unlock()

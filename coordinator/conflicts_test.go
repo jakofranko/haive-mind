@@ -52,12 +52,10 @@ func (u *updates) count() int {
 }
 
 func flag(h hub.Hub, id string, on bool) {
-	content := "flag"
+	m := hub.NewFlag(1, id)
 	if !on {
-		content = "unflag"
+		m = hub.NewUnflag(1, id)
 	}
-	m := hub.NewMessage(hub.MessageTypeConflictFlag, "host", content, 1)
-	m.To = id
 	h.Send(context.Background(), m)
 }
 
@@ -129,7 +127,7 @@ func TestConflict_ResolveClearsAllFlags(t *testing.T) {
 	flag(h, "Agent-bob", true)
 	eventually(t, "both flagged", func() bool { return flaggedIs(c, "Agent-alice", "Agent-bob") })
 
-	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeConflictResolve, "host", "", 1))
+	h.Send(context.Background(), hub.NewResolve(1))
 
 	eventually(t, "no flags", func() bool { return flaggedIs(c) })
 	eventually(t, "empty update published", func() bool { return len(u.last()) == 0 && u.count() >= 3 })

@@ -596,7 +596,7 @@ func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 		// The coordinator owns the round number; we adopt it on RoundChange.
 		m.hub.StartRound(m.round + 1)
 	case "[Resolve]":
-		m.hub.Send(context.Background(), hub.NewMessage(hub.MessageTypeConflictResolve, "host", "", m.round))
+		m.hub.Send(context.Background(), hub.NewResolve(m.round))
 	case "[Export]":
 		exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
 		m.hub.Export(exportPath)
@@ -686,12 +686,10 @@ func (m *AppModel) toggleFlag() (tea.Model, tea.Cmd) {
 	if !ok || p.Name == "host" {
 		return m, nil
 	}
-	action := "flag"
+	msg := hub.NewFlag(m.round, p.Name)
 	if m.participants.IsFlagged(p.Name) {
-		action = "unflag"
+		msg = hub.NewUnflag(m.round, p.Name)
 	}
-	msg := hub.NewMessage(hub.MessageTypeConflictFlag, "host", action, m.round)
-	msg.To = p.Name
 	m.hub.Send(context.Background(), msg)
 	return m, nil
 }
