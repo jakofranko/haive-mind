@@ -61,7 +61,7 @@ func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantM
 		status:           hub.StatusIdle,
 		displayName:      id,
 		transcript:       transcript.New(),
-		sidebar:          sidebar.New(),
+		sidebar:          sidebar.New(id),
 		response:         response.New(),
 		namePrompt:       namePrompt,
 		namePromptActive: false,
@@ -73,7 +73,6 @@ func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantM
 		m.response.SetDraft(draft)
 	}
 
-	m.sidebar.SetDisplayName(id)
 	m.sidebar.SetParticipants([]hub.Participant{
 		{ID: m.id, DisplayName: id, Status: hub.StatusIdle},
 	})
@@ -81,7 +80,6 @@ func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantM
 	// Check if we have a stored display name
 	if displayName := hubChans.GetDisplayName(m.id); displayName != "" {
 		m.displayName = displayName
-		m.sidebar.SetDisplayName(displayName)
 		m.sidebar.SetParticipants([]hub.Participant{
 			{ID: m.id, DisplayName: displayName, Status: hub.StatusIdle},
 		})
@@ -251,7 +249,6 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.namePromptActive = false
 				m.activePane = paneTranscript
 				m.namePrompt.Blur()
-				m.sidebar.SetDisplayName(name)
 				m.sidebar.SetParticipants([]hub.Participant{
 					{ID: m.id, DisplayName: name, Status: hub.StatusIdle},
 				})
@@ -382,7 +379,6 @@ func (m *ParticipantModel) Close() {
 
 func (m *ParticipantModel) SetDisplayName(name string) {
 	m.displayName = name
-	m.sidebar.SetDisplayName(name)
 }
 
 // applyFlags handles the coordinator's announcement of who the host has asked

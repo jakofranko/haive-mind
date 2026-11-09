@@ -17,7 +17,7 @@ type Model struct {
 	active       bool
 	round        int
 	flagged      map[string]bool // ids the host asked to revise
-	displayName  string
+	selfID       string          // participant id of this session
 }
 
 type Styles struct {
@@ -58,10 +58,11 @@ func defaultStyles() Styles {
 	}
 }
 
-func New() Model {
+func New(selfID string) Model {
 	return Model{
 		participants: []hub.Participant{},
 		styles:       defaultStyles(),
+		selfID:       selfID,
 	}
 }
 
@@ -122,7 +123,7 @@ func (m Model) View() string {
 		}
 
 		participantStyle := m.styles.participant
-		if displayName == m.displayName {
+		if p.ID == m.selfID {
 			participantStyle = m.styles.yourSelf
 		}
 
@@ -169,10 +170,6 @@ func (m *Model) RemoveParticipant(id string) {
 
 func (m *Model) SetRound(round int) {
 	m.round = round
-}
-
-func (m *Model) SetDisplayName(name string) {
-	m.displayName = name
 }
 
 func (m *Model) GetParticipants() []hub.Participant {
