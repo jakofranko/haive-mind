@@ -562,7 +562,7 @@ func TestReconnectedHostSeesCurrentRound(t *testing.T) {
 	back.waitFor(t, "Participants (Round 2")
 	back.waitFor(t, "AGENTREPLY-hello")
 	back.waitFor(t, "bobsays-sqlite")
-	back.waitFor(t, "AGENTREPLY-Several")
+	back.waitFor(t, "AGENTREPLY-AGENTREPLY-Several") // the newest message is on screen
 	// Only the host screen has the buttons: the old session's end must have
 	// freed the host role, or this session is a participant.
 	back.waitFor(t, "New Round")
@@ -616,7 +616,6 @@ func TestReconnectedFlaggedParticipantGetsAnswerBack(t *testing.T) {
 		alice.send(t, "\x7f")
 	}
 	alice.disconnect()
-	time.Sleep(300 * time.Millisecond) // let the server notice
 
 	back := connect(t, addr, "alice") // same SSH user: no name prompt this time
 	back.waitFor(t, "asked you to revise")
