@@ -6,7 +6,7 @@ import "testing"
 // subscribers hear about it.
 func TestUpdateParticipantStatus_IsStoredAndAnnounced(t *testing.T) {
 	h := NewHub()
-	h.RegisterParticipant(NewParticipantEvent("Agent-alice", "Alice", StatusIdle, 1, ParticipantEventConnect))
+	h.RegisterParticipant(NewParticipantEvent("Agent-alice", "Alice", StatusIdle, ParticipantEventConnect))
 	events := collect(t, h, MessageTypeParticipantEvent)
 	if err := h.Start(); err != nil {
 		t.Fatal(err)

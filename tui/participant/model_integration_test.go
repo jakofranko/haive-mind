@@ -92,9 +92,9 @@ func startedHub(t *testing.T) hub.Hub {
 		t.Fatalf("Failed to start hub: %v", err)
 	}
 	t.Cleanup(func() { h.Stop() })
-	h.SetDisplayName("user1", "Participant One")
-	h.RegisterParticipant(hub.NewParticipantEvent("host", "Host", hub.StatusIdle, 1, hub.ParticipantEventConnect))
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user1", "Participant One", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.SetDisplayName("Agent-user1", "Participant One")
+	h.RegisterParticipant(hub.NewParticipantEvent("host", "Host", hub.StatusIdle, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user1", "Participant One", hub.StatusIdle, hub.ParticipantEventConnect))
 	return h
 }
 
@@ -112,7 +112,7 @@ func TestParticipantModel_ReceivesParticipantEvents(t *testing.T) {
 	out := runProgram(t, NewParticipantModel(h, "Agent-user1", "user1"))
 	eventuallyDrawn(t, out, "Participant One")
 
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user2", "Participant Two", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user2", "Participant Two", hub.StatusIdle, hub.ParticipantEventConnect))
 
 	eventuallyDrawn(t, out, "Participant Two")
 }

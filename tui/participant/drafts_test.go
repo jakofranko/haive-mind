@@ -8,7 +8,7 @@ import (
 )
 
 func namedModel(h hub.Hub) *ParticipantModel {
-	h.SetDisplayName("alice", "Alice")
+	h.SetDisplayName("Agent-alice", "Alice")
 	m := NewParticipantModel(h, "Agent-alice", "alice")
 	m.activePane = paneResponse
 	m.updateActiveStates()

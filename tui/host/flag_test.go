@@ -16,8 +16,8 @@ func hostWithAlice(t *testing.T) (*AppModel, func() []*hub.Message) {
 	h, sent := sentRig(t, hub.MessageTypeFlag, hub.MessageTypeUnflag, hub.MessageTypeResolve, hub.MessageTypeAggregateRequest)
 	m := NewAppModel(h)
 	updated, _ := m.Update(initialParticipantsMsg{
-		{Name: "host", DisplayName: "TestHost", Status: hub.StatusIdle},
-		{Name: "Agent-alice", DisplayName: "Alice", Status: hub.StatusSubmitted},
+		{ID: "host", DisplayName: "TestHost", Status: hub.StatusIdle},
+		{ID: "Agent-alice", DisplayName: "Alice", Status: hub.StatusSubmitted},
 	})
 	m = updated.(*AppModel)
 	m = press(m, tea.KeyTab) // transcript -> participants
@@ -53,7 +53,7 @@ func TestHost_CFlagsAndUnflagsTheSelectedParticipant(t *testing.T) {
 func TestHost_CannotFlagTheHost(t *testing.T) {
 	h, sent := sentRig(t, hub.MessageTypeFlag, hub.MessageTypeUnflag)
 	m := NewAppModel(h)
-	updated, _ := m.Update(initialParticipantsMsg{{Name: "host", DisplayName: "TestHost", Status: hub.StatusIdle}})
+	updated, _ := m.Update(initialParticipantsMsg{{ID: "host", DisplayName: "TestHost", Status: hub.StatusIdle}})
 	m = updated.(*AppModel)
 	m = press(m, tea.KeyTab)
 	typeText(m, "c")
@@ -153,11 +153,11 @@ func TestHost_AggregateWithoutFlagsGoesStraightThrough(t *testing.T) {
 // moves to a row that exists, so `c` still targets someone.
 func TestHost_CursorStaysOnARowWhenTheSelectedParticipantLeaves(t *testing.T) {
 	m, sent := hostWithAlice(t)
-	updated, _ := m.Update(eventMsg{session.ParticipantEvent{Participant: &hub.Participant{Name: "Agent-bob", DisplayName: "Bobby", Status: hub.StatusIdle}}})
+	updated, _ := m.Update(eventMsg{session.ParticipantEvent{Participant: &hub.Participant{ID: "Agent-bob", DisplayName: "Bobby", Status: hub.StatusIdle}}})
 	m = updated.(*AppModel)
 	m = typeText(m, "j") // Alice -> Bobby, the last row
 
-	updated, _ = m.Update(eventMsg{session.ParticipantEvent{Participant: &hub.Participant{Name: "Agent-bob", Status: hub.StatusDisconnected}}})
+	updated, _ = m.Update(eventMsg{session.ParticipantEvent{Participant: &hub.Participant{ID: "Agent-bob", Status: hub.StatusDisconnected}}})
 	m = updated.(*AppModel)
 	assert.NotContains(t, visible(m.View()), "Bobby")
 

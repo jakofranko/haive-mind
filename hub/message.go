@@ -67,21 +67,21 @@ func NewMessage(msgType MessageType, from, content string, round int) *Message {
 
 // NewFlag is the host asking the participant with id target to revise.
 func NewFlag(round int, target string) *Message {
-	m := NewMessage(MessageTypeFlag, "host", "", round)
+	m := NewMessage(MessageTypeFlag, HostID, "", round)
 	m.To = target
 	return m
 }
 
 // NewUnflag is the host withdrawing the Flag on the participant with id target.
 func NewUnflag(round int, target string) *Message {
-	m := NewMessage(MessageTypeUnflag, "host", "", round)
+	m := NewMessage(MessageTypeUnflag, HostID, "", round)
 	m.To = target
 	return m
 }
 
 // NewResolve is the host clearing every Flag at once.
 func NewResolve(round int) *Message {
-	return NewMessage(MessageTypeResolve, "host", "", round)
+	return NewMessage(MessageTypeResolve, HostID, "", round)
 }
 
 // NewRoundState publishes the current round and the flagged Participant ids.
@@ -108,10 +108,9 @@ func (m *Message) ToJSON() ([]byte, error) {
 }
 
 type Participant struct {
-	Name        string            `json:"name"`
+	ID          string            `json:"id"`
 	DisplayName string            `json:"display_name"`
 	Status      ParticipantStatus `json:"status"`
-	Round       int               `json:"round"`
 	Event       string            `json:"event,omitempty"` // "connect", "disconnect", "status_change"
 }
 
@@ -121,12 +120,11 @@ const (
 	ParticipantEventStatusChange = "status_change"
 )
 
-func NewParticipantEvent(name, displayName string, status ParticipantStatus, round int, event string) *Participant {
+func NewParticipantEvent(id, displayName string, status ParticipantStatus, event string) *Participant {
 	return &Participant{
-		Name:        name,
+		ID:          id,
 		DisplayName: displayName,
 		Status:      status,
-		Round:       round,
 		Event:       event,
 	}
 }

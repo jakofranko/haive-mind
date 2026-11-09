@@ -23,7 +23,7 @@ func sentRig(t *testing.T, types ...hub.MessageType) (hub.Hub, func() []*hub.Mes
 	h := hub.NewHub()
 	h.SetAgentRunner(noopRunner{})
 	h.SetSynthesizer(noopRunner{})
-	h.SetDisplayName("host", "TestHost")
+	h.SetDisplayName(hub.HostID, "TestHost")
 	var mu sync.Mutex
 	var got []*hub.Message
 	if _, err := h.SubscribeTypes(context.Background(), types, func(m *hub.Message) error {

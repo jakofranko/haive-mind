@@ -200,82 +200,97 @@ func (h *hubImpl) RegisterParticipant(p *Participant) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if _, known := h.joined[p.Name]; !known {
+	if _, known := h.joined[p.ID]; !known {
 		h.joinSeq++
-		h.joined[p.Name] = h.joinSeq
+		h.joined[p.ID] = h.joinSeq
 	}
-	h.participants[p.Name] = p
+	if p.Event == "" {
+		registered := *p // leave the caller's value alone
+		registered.Event = ParticipantEventConnect
+		p = &registered
+	}
+	h.participants[p.ID] = p
 
-	event := NewParticipantEvent(p.Name, p.DisplayName, p.Status, p.Round, ParticipantEventConnect)
-	h.broadcastLocked(MessageTypeParticipantEvent, event)
+	h.broadcastLocked(MessageTypeParticipantEvent, p)
 	return nil
 }
 
 // UpdateParticipantStatus records a new status for a registered participant
 // and announces the change. The stored entry is replaced, not mutated, so
 // copies already handed out stay unchanged.
-func (h *hubImpl) UpdateParticipantStatus(name string, status ParticipantStatus) error {
+func (h *hubImpl) UpdateParticipantStatus(id string, status ParticipantStatus) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	p, ok := h.participants[name]
+	p, ok := h.participants[id]
 	if !ok {
-		return fmt.Errorf("participant %q is not registered", name)
+		return fmt.Errorf("participant %q is not registered", id)
 	}
 	updated := *p
 	updated.Status = status
 	updated.Event = ParticipantEventStatusChange
-	h.participants[name] = &updated
+	h.participants[id] = &updated
 
 	h.broadcastLocked(MessageTypeParticipantEvent, &updated)
 	return nil
 }
 
-func (h *hubImpl) UnregisterParticipant(name string) error {
+func (h *hubImpl) UnregisterParticipant(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if p, ok := h.participants[name]; ok {
-		delete(h.participants, name)
-		delete(h.joined, name)
+	if p, ok := h.participants[id]; ok {
+		delete(h.participants, id)
+		delete(h.joined, id)
 
-		event := NewParticipantEvent(p.Name, p.DisplayName, StatusDisconnected, p.Round, ParticipantEventDisconnect)
+		event := NewParticipantEvent(p.ID, p.DisplayName, StatusDisconnected, ParticipantEventDisconnect)
 		h.broadcastLocked(MessageTypeParticipantEvent, event)
 	}
 	return nil
 }
 
-func (h *hubImpl) GetDisplayName(name string) string {
+func (h *hubImpl) GetDisplayName(id string) string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	if dn, ok := h.displayNames[name]; ok {
+	if dn, ok := h.displayNames[id]; ok {
 		return dn
 	}
 	return ""
 }
 
-func (h *hubImpl) SetDisplayName(name, displayName string) {
+func (h *hubImpl) SetDisplayName(id, displayName string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.displayNames[name] = displayName
+	h.displayNames[id] = displayName
+
+	// A registered participant is renamed in place and the change announced;
+	// the stored entry is replaced, not mutated, so copies already handed out
+	// stay unchanged.
+	if p, ok := h.participants[id]; ok {
+		renamed := *p
+		renamed.DisplayName = displayName
+		renamed.Event = ParticipantEventStatusChange
+		h.participants[id] = &renamed
+		h.broadcastLocked(MessageTypeParticipantEvent, &renamed)
+	}
 }
 
 // SetDraft stores a participant's unsent text, keyed by their stable id so it
 // outlives any one session. Empty text clears it.
-func (h *hubImpl) SetDraft(name, text string) {
+func (h *hubImpl) SetDraft(id, text string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if text == "" {
-		delete(h.drafts, name)
+		delete(h.drafts, id)
 		return
 	}
-	h.drafts[name] = text
+	h.drafts[id] = text
 }
 
-func (h *hubImpl) GetDraft(name string) string {
+func (h *hubImpl) GetDraft(id string) string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.drafts[name]
+	return h.drafts[id]
 }
 
 func (h *hubImpl) SetAgentRunner(runner agent.Runner) {
@@ -403,12 +418,11 @@ func (h *hubImpl) broadcastLocked(msgType MessageType, payload interface{}) {
 		msg = v
 	case *Participant:
 		msg = &Message{
-			ID:        v.Name,
+			ID:        v.ID,
 			Type:      msgType,
 			From:      "hub",
 			Content:   v.Event,
 			Timestamp: time.Now(),
-			Round:     v.Round,
 		}
 	default:
 		return
@@ -427,7 +441,7 @@ func (h *hubImpl) GetParticipants() []*Participant {
 	for _, p := range h.participants {
 		participants = append(participants, p)
 	}
-	sort.Slice(participants, func(i, j int) bool { return h.joined[participants[i].Name] < h.joined[participants[j].Name] })
+	sort.Slice(participants, func(i, j int) bool { return h.joined[participants[i].ID] < h.joined[participants[j].ID] })
 	return participants
 }
 

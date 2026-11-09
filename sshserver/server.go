@@ -64,10 +64,21 @@ func NewServer(h hub.Hub, addr, hostKey string) *ssh.Server {
 type trackedSession struct {
 	program  *tea.Program
 	model    interface{ Close() }
-	cancel   context.CancelFunc
 	username string
 	isHost   bool
-	name     string
+	id       string
+
+	closeOnce sync.Once
+}
+
+// close stops the session's program and closes its model, once however many
+// times it is called: a replaced session is closed on replacement and again
+// when its own connection ends.
+func (t *trackedSession) close() {
+	t.closeOnce.Do(func() {
+		t.program.Kill() // a no-op once the program has exited
+		t.model.Close()
+	})
 }
 
 type sessionManager struct {
@@ -87,75 +98,100 @@ func (m *sessionManager) programHandler(s ssh.Session) *tea.Program {
 		tea.Model
 		Close()
 	}
-	var name string
+	var id string
 	var sshUsername string
 
 	if isHost {
-		sshUsername = "host"
-		name = "host"
+		id = hub.HostID
 		model = host.NewAppModel(m.hub)
 	} else {
 		sshUsername = s.User()
-		name = "Agent-" + sshUsername
-		model = participant.NewParticipantModel(m.hub, name, sshUsername)
+		id = hub.ParticipantID(sshUsername)
+		model = participant.NewParticipantModel(m.hub, id, sshUsername)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
 	program := tea.NewProgram(model, append(bubbletea.MakeOptions(s), tea.WithoutSignalHandler())...) // the server, not each session, handles Ctrl+C
 
 	session := &trackedSession{
 		program:  program,
 		model:    model,
-		cancel:   cancel,
 		username: sshUsername,
 		isHost:   isHost,
-		name:     name,
+		id:       id,
 	}
 
-	m.mu.Lock()
-	if isHost {
-		m.hostConnected = true
-		m.hostSession = session
-	} else {
-		m.participantSessions[name] = session
-	}
-	m.mu.Unlock()
-
-	go m.trackSession(ctx, session)
-
-	// Register participant with hub
-	displayName := m.hub.GetDisplayName(sshUsername)
-	if displayName == "" {
-		if isHost {
-			displayName = "Host"
-		} else {
-			displayName = name
-		}
-	}
-
-	p := hub.NewParticipantEvent(name, displayName, hub.StatusIdle, 0, hub.ParticipantEventConnect)
-	if err := m.hub.RegisterParticipant(p); err != nil {
-		log.Printf("Failed to register participant: %v", err)
-	}
+	m.admit(s.Context(), session)
 
 	return program
 }
 
-func (m *sessionManager) trackSession(ctx context.Context, session *trackedSession) {
-	session.program.Wait()
-	session.model.Close()
-
+// admit records the session as the current one for its participant id,
+// starts tracking its end, and registers the participant with the hub.
+func (m *sessionManager) admit(ctx context.Context, session *trackedSession) {
+	id, isHost := session.id, session.isHost
 	m.mu.Lock()
-	if session.isHost {
-		m.hostConnected = false
-		m.hostSession = nil
+	var replaced *trackedSession
+	if isHost {
+		replaced = m.hostSession
+		m.hostConnected = true
+		m.hostSession = session
 	} else {
-		delete(m.participantSessions, session.name)
+		replaced = m.participantSessions[id]
+		m.participantSessions[id] = session
 	}
 	m.mu.Unlock()
 
-	// Unregister participant from hub
-	if err := m.hub.UnregisterParticipant(session.name); err != nil {
+	// The replaced session must not keep a second live model under this id.
+	if replaced != nil && replaced != session {
+		replaced.close()
+	}
+
+	go m.trackSession(ctx, session)
+
+	// Register participant with hub
+	displayName := m.hub.GetDisplayName(id)
+	if displayName == "" {
+		if isHost {
+			displayName = "Host"
+		} else {
+			displayName = id
+		}
+	}
+
+	p := hub.NewParticipantEvent(id, displayName, hub.StatusIdle, hub.ParticipantEventConnect)
+	if err := m.hub.RegisterParticipant(p); err != nil {
+		log.Printf("Failed to register participant: %v", err)
+	}
+}
+
+// trackSession cleans up after a session once its SSH connection ends. It
+// waits on the SSH session's context, not on program.Wait(): Wait reads a
+// channel that Run creates, so a Wait called before Run starts (as it is here,
+// since the middleware runs the program after programHandler returns) blocks
+// forever and the end of the session is never processed.
+func (m *sessionManager) trackSession(ctx context.Context, session *trackedSession) {
+	<-ctx.Done()
+	session.close() // the middleware also quits the program
+
+	// Only the session still tracked for this id may unregister it: a newer
+	// session for the same id has replaced this one and must stay registered.
+	// The check and the unregister share the lock so a reconnect cannot slip between them.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if session.isHost {
+		if m.hostSession != session {
+			return
+		}
+		m.hostConnected = false
+		m.hostSession = nil
+	} else {
+		if m.participantSessions[session.id] != session {
+			return
+		}
+		delete(m.participantSessions, session.id)
+	}
+
+	if err := m.hub.UnregisterParticipant(session.id); err != nil {
 		log.Printf("Failed to unregister participant: %v", err)
 	}
 }

@@ -10,7 +10,7 @@ import (
 
 func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -23,7 +23,7 @@ func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_ParticipantsFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -37,7 +37,7 @@ func TestSnapshot_FullTUI_ParticipantsFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_DirectiveFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -52,7 +52,7 @@ func TestSnapshot_FullTUI_DirectiveFocused(t *testing.T) {
 
 func TestSnapshot_FullTUI_ButtonsFocused(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -76,7 +76,7 @@ func TestSnapshot_FullTUI_ButtonsFocused(t *testing.T) {
 
 func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
@@ -125,17 +125,17 @@ func TestSnapshot_Transcript_WithMessages(t *testing.T) {
 
 func TestSnapshot_Participants_AllStatuses(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 120
 	model.height = 40
 	model.activePane = paneParticipants
 	model.participants.SetParticipants([]hub.Participant{
-		{Name: "Agent-1", DisplayName: "Agent-1", Status: hub.StatusIdle, Round: 1},
-		{Name: "Agent-2", DisplayName: "Agent-2", Status: hub.StatusTyping, Round: 1},
-		{Name: "Agent-3", DisplayName: "Agent-3", Status: hub.StatusSubmitted, Round: 1},
-		{Name: "Agent-4", DisplayName: "Agent-4", Status: hub.StatusReady, Round: 1},
+		{ID: "Agent-1", DisplayName: "Agent-1", Status: hub.StatusIdle},
+		{ID: "Agent-2", DisplayName: "Agent-2", Status: hub.StatusTyping},
+		{ID: "Agent-3", DisplayName: "Agent-3", Status: hub.StatusSubmitted},
+		{ID: "Agent-4", DisplayName: "Agent-4", Status: hub.StatusReady},
 	})
 	model.layout()
 
@@ -145,7 +145,7 @@ func TestSnapshot_Participants_AllStatuses(t *testing.T) {
 
 func TestSnapshot_SmallTerminal(t *testing.T) {
 	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("host", "TestHost")
+	hubChans.SetDisplayName(hub.HostID, "TestHost")
 	model := NewAppModel(hubChans)
 
 	model.width = 80

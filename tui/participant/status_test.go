@@ -13,14 +13,14 @@ import (
 func statusRig(t *testing.T) (*ParticipantModel, func() hub.ParticipantStatus) {
 	t.Helper()
 	h := hub.NewHub()
-	h.SetDisplayName("alice", "Alice")
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.SetDisplayName("Agent-alice", "Alice")
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
 	m := NewParticipantModel(h, "Agent-alice", "alice")
 	m.activePane = paneResponse
 	m.updateActiveStates()
 	return m, func() hub.ParticipantStatus {
 		for _, p := range h.GetParticipants() {
-			if p.Name == "Agent-alice" {
+			if p.ID == "Agent-alice" {
 				return p.Status
 			}
 		}

@@ -537,6 +537,9 @@ func TestReconnectedHostSeesCurrentRound(t *testing.T) {
 
 	back := connect(t, addr, "host") // same SSH user: no name prompt this time
 	back.waitFor(t, "Participants (Round 2")
+	// Only the host screen has the buttons: the old session's end must have
+	// freed the host role, or this session is a participant.
+	back.waitFor(t, "New Round")
 }
 
 // #53: a participant with a stored display name reconnects (no name prompt, so

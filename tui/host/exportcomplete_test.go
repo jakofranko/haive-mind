@@ -13,7 +13,7 @@ import (
 func startedHub(t *testing.T) hub.Hub {
 	t.Helper()
 	h := hub.NewHub()
-	h.SetDisplayName("host", "TestHost")
+	h.SetDisplayName(hub.HostID, "TestHost")
 	if err := h.Start(); err != nil {
 		t.Fatal(err)
 	}

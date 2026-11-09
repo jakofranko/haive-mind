@@ -22,7 +22,7 @@ func enterName(t *testing.T, m *ParticipantModel, name string) *ParticipantModel
 func TestParticipant_ChoosingDisplayName_DoesNotCreateSecondHubEntry(t *testing.T) {
 	h := hub.NewHub()
 	// What the SSH server does on connect.
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Agent-alice", hub.StatusIdle, 0, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Agent-alice", hub.StatusIdle, hub.ParticipantEventConnect))
 
 	m := NewParticipantModel(h, "Agent-alice", "alice")
 	enterName(t, m, "Alice")
@@ -31,8 +31,8 @@ func TestParticipant_ChoosingDisplayName_DoesNotCreateSecondHubEntry(t *testing.
 	if len(ps) != 1 {
 		t.Fatalf("hub has %d entries for one person: %+v", len(ps), ps)
 	}
-	if ps[0].Name != "Agent-alice" || ps[0].DisplayName != "Alice" {
-		t.Errorf("entry = {Name:%q DisplayName:%q}, want {Agent-alice, Alice}", ps[0].Name, ps[0].DisplayName)
+	if ps[0].ID != "Agent-alice" || ps[0].DisplayName != "Alice" {
+		t.Errorf("entry = {ID:%q DisplayName:%q}, want {Agent-alice, Alice}", ps[0].ID, ps[0].DisplayName)
 	}
 
 	// What the SSH server does when the session ends.
@@ -50,7 +50,7 @@ func TestParticipant_SidebarRowMatchesHubIdentity(t *testing.T) {
 	m = enterName(t, m, "Alice")
 
 	row := m.sidebar.GetParticipants()
-	if len(row) != 1 || row[0].Name != "Agent-alice" || row[0].DisplayName != "Alice" {
+	if len(row) != 1 || row[0].ID != "Agent-alice" || row[0].DisplayName != "Alice" {
 		t.Errorf("sidebar = %+v, want one row {Agent-alice, Alice}", row)
 	}
 }
@@ -77,13 +77,13 @@ func TestParticipant_OtherDisconnecting_RemovesThemFromSidebar(t *testing.T) {
 		}
 	}
 
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
 	pump("connect")
 	h.UnregisterParticipant("Agent-alice")
 	pump("disconnect")
 
 	for _, p := range m.sidebar.GetParticipants() {
-		if p.Name == "Agent-alice" {
+		if p.ID == "Agent-alice" {
 			t.Errorf("Alice is still in the sidebar after disconnecting: %+v", p)
 		}
 	}

@@ -28,7 +28,7 @@ func popUpdate(t *testing.T, m *AppModel) tea.Msg {
 // itself has to carry enough to remove the row.
 func TestHost_ParticipantDisconnect_RemovesThemFromTheList(t *testing.T) {
 	h := hub.NewHub()
-	h.SetDisplayName("host", "TestHost")
+	h.SetDisplayName(hub.HostID, "TestHost")
 	if err := h.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestHost_ParticipantDisconnect_RemovesThemFromTheList(t *testing.T) {
 
 	m := NewAppModel(h)
 
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
 	updated, _ := m.Update(popUpdate(t, m))
 	m = updated.(*AppModel)
 	if got := len(m.participants.GetParticipants()); got != 1 {

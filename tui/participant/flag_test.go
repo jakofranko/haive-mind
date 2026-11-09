@@ -88,9 +88,9 @@ func TestFlagged_ReconnectingSessionIsToldOnce(t *testing.T) {
 // Everyone sees who is flagged, and the announcement itself is not chat.
 func TestFlagged_SidebarShowsReviseForFlaggedParticipants(t *testing.T) {
 	h := hub.NewHub()
-	h.SetDisplayName("alice", "Alice")
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-bob", "Bobby", hub.StatusSubmitted, 1, hub.ParticipantEventConnect))
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, 1, hub.ParticipantEventConnect))
+	h.SetDisplayName("Agent-alice", "Alice")
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-bob", "Bobby", hub.StatusSubmitted, hub.ParticipantEventConnect))
+	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
 	m := sized(NewParticipantModel(h, "Agent-alice", "alice"))
 	m = step(m, initialParticipantsMsg(m.client.Participants()))
 	assert.NotContains(t, visible(m.View()), "revise")

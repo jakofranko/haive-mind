@@ -256,7 +256,7 @@ func TestSynthesis_PromptDoesNotAskTheModelToFindDisagreements(t *testing.T) {
 // connect registers a participant the way the SSH server does.
 func connect(t *testing.T, h hub.Hub, id string) {
 	t.Helper()
-	p := hub.NewParticipantEvent(id, id, hub.StatusIdle, 0, hub.ParticipantEventConnect)
+	p := hub.NewParticipantEvent(id, id, hub.StatusIdle, hub.ParticipantEventConnect)
 	if err := h.RegisterParticipant(p); err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestRoundState_ConnectDoesNotResetStatuses(t *testing.T) {
 	eventually(t, "round state for bob", func() bool { return u.count() > before })
 	time.Sleep(300 * time.Millisecond) // negative check: waiting to confirm nothing else happens
 	for _, p := range h.GetParticipants() {
-		if p.Name == "Agent-alice" && p.Status != hub.StatusSubmitted {
+		if p.ID == "Agent-alice" && p.Status != hub.StatusSubmitted {
 			t.Errorf("alice's status = %q after bob connected, want submitted", p.Status)
 		}
 	}
