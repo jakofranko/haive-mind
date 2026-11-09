@@ -88,6 +88,10 @@ _Avoid_: Turn, cycle, iteration, phase
 A single SSH connection from a host or participant to the server. Each session runs one TUI (host or participant).
 _Avoid_: Connection, meeting, run
 
+**Session client**:
+A session's end of the conversation with the hub. It turns what the hub publishes into typed events for the host or participant TUI, and stops when the session ends.
+_Avoid_: Listener, subscriber, connection
+
 ### Participant State
 
 **Participant Status**:
