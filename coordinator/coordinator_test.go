@@ -104,7 +104,8 @@ func TestAggregateRequest_SynthesizesOnceAndSharesTheDraft(t *testing.T) {
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeResponse, "bob", "use sqlite", 1))
 	eventually(t, "directive reply and both responses recorded", func() bool {
 		tr := c.Transcript()
-		return countType(tr, hub.MessageTypeResponse, "") >= 2
+		return countType(tr, hub.MessageTypeAgentReply, "") >= 1 &&
+			countType(tr, hub.MessageTypeResponse, "") >= 2
 	})
 	agentCallsBefore := agentRunner.calls.Load()
 

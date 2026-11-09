@@ -311,7 +311,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case hubMessageMsg:
 		if msg.Type == hub.MessageTypeFlagUpdate {
-			if ids, err := (*hub.Message)(&msg).FlaggedIDs(); err == nil {
+			if ids, err := hub.Message(msg).FlaggedIDs(); err == nil {
 				m.participants.SetFlagged(ids)
 			}
 			return m, m.listenForMessages()
@@ -684,9 +684,11 @@ func (m *AppModel) toggleFlag() (tea.Model, tea.Cmd) {
 	if !ok || p.Name == "host" {
 		return m, nil
 	}
-	msg := hub.NewFlag(m.round, p.Name)
+	var msg *hub.Message
 	if m.participants.IsFlagged(p.Name) {
 		msg = hub.NewUnflag(m.round, p.Name)
+	} else {
+		msg = hub.NewFlag(m.round, p.Name)
 	}
 	m.hub.Send(context.Background(), msg)
 	return m, nil

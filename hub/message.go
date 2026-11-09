@@ -94,7 +94,7 @@ func NewFlagUpdate(round int, ids []string) *Message {
 }
 
 // FlaggedIDs returns the flagged Participant ids carried by a Flag update.
-func (m *Message) FlaggedIDs() ([]string, error) {
+func (m Message) FlaggedIDs() ([]string, error) {
 	var ids []string
 	if err := json.Unmarshal([]byte(m.Content), &ids); err != nil {
 		return nil, err
