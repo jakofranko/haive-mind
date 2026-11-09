@@ -129,13 +129,45 @@ func repoRoot(t *testing.T) string {
 	return filepath.Dir(filepath.Dir(file))
 }
 
-func goBuild(t *testing.T, root, out, pkg string) {
+var (
+	buildOnce sync.Once
+	buildDir  string
+	buildErr  error
+)
+
+// binaries builds haive-mind and the fake opencode once per test run and
+// returns the directory holding them. The directory is the same on every run,
+// so an operating system that remembers approvals per program path (the
+// Windows firewall) sees the same two programs each time rather than a new
+// pair per test.
+func binaries(t *testing.T) string {
 	t.Helper()
-	cmd := exec.Command("go", "build", "-o", out, pkg)
-	cmd.Dir = root
-	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build %s: %v\n%s", pkg, err, b)
+	buildOnce.Do(func() {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			cache = os.TempDir()
+		}
+		buildDir = filepath.Join(cache, "haive-mind-e2e")
+		if buildErr = os.MkdirAll(buildDir, 0o755); buildErr != nil {
+			return
+		}
+		root := repoRoot(t)
+		for out, pkg := range map[string]string{
+			exe("haive-mind"): "./cmd/haive-mind",
+			exe("opencode"):   "./e2e/fakeagent",
+		} {
+			cmd := exec.Command("go", "build", "-o", filepath.Join(buildDir, out), pkg)
+			cmd.Dir = root
+			if b, err := cmd.CombinedOutput(); err != nil {
+				buildErr = fmt.Errorf("go build %s: %v\n%s", pkg, err, b)
+				return
+			}
+		}
+	})
+	if buildErr != nil {
+		t.Fatal(buildErr)
 	}
+	return buildDir
 }
 
 func freePort(t *testing.T) string {
@@ -167,17 +199,14 @@ func startServerWith(t *testing.T, flags, env []string) (addr, dataDir, agentLog
 	if testing.Short() {
 		t.Skip("builds and runs the real binary; skipped with -short")
 	}
-	root := repoRoot(t)
-	bin := t.TempDir()
-	goBuild(t, root, filepath.Join(bin, exe("haive-mind")), "./cmd/haive-mind")
-	goBuild(t, root, filepath.Join(bin, exe("opencode")), "./e2e/fakeagent")
+	bin := binaries(t)
 
 	port := freePort(t)
 	dataDir = t.TempDir()
 	agentLog = filepath.Join(t.TempDir(), "agent.log")
 	var logs bytes.Buffer
 	args := append([]string{
-		"--port", port,
+		"--bind", "127.0.0.1", "--port", port,
 		"--host-key", filepath.Join(t.TempDir(), "host_key"),
 		"--data-dir", dataDir, "--debug"}, flags...)
 	cmd := exec.Command(filepath.Join(bin, exe("haive-mind")), args...)

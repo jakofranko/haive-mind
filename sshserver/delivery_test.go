@@ -14,7 +14,7 @@ import (
 // subscribers. Every message sent through the hub reaches every subscriber.
 func TestNewServer_DoesNotStealMessagesFromSubscribers(t *testing.T) {
 	h := hub.NewHub()
-	NewServer(h, "0", filepath.Join(t.TempDir(), "host_key")) // not "": that writes a key into the package directory
+	NewServer(h, "127.0.0.1:0", filepath.Join(t.TempDir(), "host_key")) // not "": that writes a key into the package directory
 	defer h.Stop()
 
 	var got atomic.Int32
@@ -36,5 +36,18 @@ func TestNewServer_DoesNotStealMessagesFromSubscribers(t *testing.T) {
 	}
 	if g := got.Load(); g != n {
 		t.Errorf("subscriber received %d of %d messages", g, n)
+	}
+}
+
+// The server listens where it is told to, so tests can keep it on the loopback
+// interface and never ask the operating system's firewall for permission.
+func TestNewServer_ListensOnTheGivenAddress(t *testing.T) {
+	h := hub.NewHub()
+	defer h.Stop()
+
+	s := NewServer(h, "127.0.0.1:0", filepath.Join(t.TempDir(), "host_key"))
+
+	if s.Addr != "127.0.0.1:0" {
+		t.Fatalf("server address = %q, want 127.0.0.1:0", s.Addr)
 	}
 }
