@@ -56,17 +56,6 @@ func (ParticipantEvent) event() {}
 func (RoundEvent) event()       {}
 func (RoundStateEvent) event()  {}
 
-// transcriptTypes are the message types every session shows in its transcript.
-// Adding one here makes it reach every TUI.
-var transcriptTypes = []hub.MessageType{
-	hub.MessageTypeDirective,
-	hub.MessageTypeResponse,
-	hub.MessageTypeAgentReply,
-	hub.MessageTypeSystem,
-	hub.MessageTypeAggregate,
-	hub.MessageTypeAggregateDraft,
-}
-
 // Client is one session's subscription to the hub. Create it with New.
 type Client struct {
 	hub   hub.Hub
@@ -91,7 +80,7 @@ type Client struct {
 func New(h hub.Hub, id string, extra ...hub.MessageType) *Client {
 	c := &Client{hub: h, id: id, inbox: inbox.New[Event](), seen: map[string]bool{}, ready: make(chan struct{})}
 
-	types := append([]hub.MessageType{}, transcriptTypes...)
+	types := hub.ShownTypes()
 	types = append(types, hub.MessageTypeRoundState, hub.MessageTypeParticipantEvent, hub.MessageTypeRoundChange, hub.MessageTypeTranscriptSnapshot)
 	types = append(types, extra...)
 
@@ -126,7 +115,9 @@ func (c *Client) receive(msg *hub.Message) error {
 		if recorded, last, err := msg.TranscriptSnapshot(); err == nil {
 			ev := SnapshotEvent{LastSubmission: last}
 			for _, m := range recorded {
-				if c.firstSight(m.ID) {
+				// The snapshot carries everything recorded; show only what a
+				// live session would.
+				if m.Type.Shown() && c.firstSight(m.ID) {
 					ev.Messages = append(ev.Messages, *m)
 				}
 			}

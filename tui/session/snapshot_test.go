@@ -31,6 +31,32 @@ func TestSnapshotAddressedToMeIsDeliveredWithTranscriptAndLastSubmission(t *test
 	}
 }
 
+// The coordinator records round changes and exports for the export file, but no
+// session shows them live, so a snapshot must not show them either.
+func TestSnapshotShowsOnlyWhatALiveSessionShows(t *testing.T) {
+	h := startedHub(t)
+	c := newClient(t, h)
+
+	d, r := msg(hub.MessageTypeDirective, "q"), msg(hub.MessageTypeResponse, "a")
+	recorded := []*hub.Message{
+		d,
+		msg(hub.MessageTypeNewRound, ""),
+		msg(hub.MessageTypeRoundChange, ""),
+		msg(hub.MessageTypeExport, "transcript.md"),
+		msg(hub.MessageTypeExportComplete, "/tmp/transcript.md"),
+		r,
+	}
+	h.Send(context.Background(), hub.NewTranscriptSnapshot(1, me, recorded, nil))
+
+	ev, ok := next(t, c).(session.SnapshotEvent)
+	if !ok {
+		t.Fatal("event is not a SnapshotEvent")
+	}
+	if len(ev.Messages) != 2 || ev.Messages[0].ID != d.ID || ev.Messages[1].ID != r.ID {
+		t.Errorf("Messages = %+v, want only the directive then the response", ev.Messages)
+	}
+}
+
 func TestLiveMessageAlreadyInTheSnapshotIsDroppedAndOthersKept(t *testing.T) {
 	h := startedHub(t)
 	c := newClient(t, h)
