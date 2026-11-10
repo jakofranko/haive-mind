@@ -12,6 +12,9 @@ import (
 	"jakofranko/haive-mind/tui/session"
 )
 
+// What every Session client does, whatever its role: deliver in send order
+// without drops, catch up once, and stop cleanly.
+
 const (
 	wait = 5 * time.Second
 	me   = "Agent-ann" // the participant id the test clients play
@@ -25,6 +28,10 @@ func startedHub(t *testing.T) hub.Hub {
 	}
 	t.Cleanup(func() { h.Stop() })
 	return h
+}
+
+func msg(mt hub.MessageType, content string) *hub.Message {
+	return hub.NewMessage(mt, "x", content, 1)
 }
 
 // eventSource is any Session client: something that hands out events.
@@ -56,21 +63,19 @@ func next(t *testing.T, c eventSource) session.Event {
 	}
 }
 
-func newClient(t *testing.T, h hub.Hub, extra ...hub.MessageType) *session.Client {
+// caughtUp is a participant's client that has had its (empty) Transcript
+// snapshot, so live messages now reach it.
+func caughtUp(t *testing.T, h hub.Hub) *session.Participant {
 	t.Helper()
-	c := session.New(h, me, extra...)
-	t.Cleanup(c.Close)
-	select {
-	case <-c.Ready():
-	case <-time.After(wait):
-		t.Fatal("client never became ready")
-	}
-	return c
+	p := newParticipant(t, h, me)
+	h.Send(context.Background(), hub.NewTranscriptSnapshot(1, me, nil, nil))
+	expect[session.CatchUpEvent](t, p)
+	return p
 }
 
 func TestMessagesArriveAsTypedEventsInSendOrder(t *testing.T) {
 	h := startedHub(t)
-	c := newClient(t, h)
+	c := caughtUp(t, h)
 
 	ctx := context.Background()
 	types := []hub.MessageType{
@@ -81,10 +86,7 @@ func TestMessagesArriveAsTypedEventsInSendOrder(t *testing.T) {
 		h.Send(ctx, hub.NewMessage(mt, "x", fmt.Sprintf("%d", i), 1))
 	}
 	for i, mt := range types {
-		ev, ok := next(t, c).(session.MessageEvent)
-		if !ok {
-			t.Fatalf("event %d is not a MessageEvent", i)
-		}
+		ev := expect[session.MessageEvent](t, c)
 		if ev.Message.Type != mt || ev.Message.Content != fmt.Sprintf("%d", i) {
 			t.Fatalf("event %d = %s %q, want %s %d", i, ev.Message.Type, ev.Message.Content, mt, i)
 		}
@@ -93,7 +95,7 @@ func TestMessagesArriveAsTypedEventsInSendOrder(t *testing.T) {
 
 func TestBurstIsDeliveredWithoutDrops(t *testing.T) {
 	h := startedHub(t)
-	c := newClient(t, h)
+	c := caughtUp(t, h)
 
 	const n = 300
 	ctx := context.Background()
@@ -101,7 +103,7 @@ func TestBurstIsDeliveredWithoutDrops(t *testing.T) {
 		h.Send(ctx, hub.NewMessage(hub.MessageTypeSystem, "hub", fmt.Sprintf("%03d", i), 1))
 	}
 	for i := 0; i < n; i++ {
-		ev := next(t, c).(session.MessageEvent)
+		ev := expect[session.MessageEvent](t, c)
 		if want := fmt.Sprintf("%03d", i); ev.Message.Content != want {
 			t.Fatalf("event %d = %s, want %s", i, ev.Message.Content, want)
 		}
@@ -110,108 +112,107 @@ func TestBurstIsDeliveredWithoutDrops(t *testing.T) {
 
 func TestParticipantEventsAreDecoded(t *testing.T) {
 	h := startedHub(t)
-	c := newClient(t, h)
+	c := caughtUp(t, h)
 
 	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
-	connect := next(t, c).(session.ParticipantEvent).Participant
+	connect := expect[session.ParticipantEvent](t, c).Participant
 	if connect.ID != "Agent-alice" || connect.DisplayName != "Alice" || connect.Event != hub.ParticipantEventConnect {
 		t.Errorf("connect = %+v", connect)
 	}
 
 	h.UpdateParticipantStatus("Agent-alice", hub.StatusTyping)
-	change := next(t, c).(session.ParticipantEvent).Participant
+	change := expect[session.ParticipantEvent](t, c).Participant
 	if change.ID != "Agent-alice" || change.Status != hub.StatusTyping {
 		t.Errorf("status change = %+v", change)
 	}
 
 	// The hub forgets a participant on disconnect, so this cannot be a lookup.
 	h.UnregisterParticipant("Agent-alice")
-	gone := next(t, c).(session.ParticipantEvent).Participant
+	gone := expect[session.ParticipantEvent](t, c).Participant
 	if gone.ID != "Agent-alice" || gone.Status != hub.StatusDisconnected || gone.Event != hub.ParticipantEventDisconnect {
 		t.Errorf("disconnect = %+v", gone)
 	}
 }
 
-func TestRoundChangeIsDelivered(t *testing.T) {
+// Round state and Round change both arrive as a RoundEvent, in send order
+// with everything else.
+func TestRoundEventsKeepSendOrder(t *testing.T) {
 	h := startedHub(t)
-	c := newClient(t, h)
-
-	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeRoundChange, "hub", "", 3))
-	if got := next(t, c).(session.RoundEvent).Round; got != 3 {
-		t.Errorf("round = %d, want 3", got)
-	}
-}
-
-func TestRoundStateDeliversRoundAndFlaggedIDs(t *testing.T) {
-	h := startedHub(t)
-	c := newClient(t, h)
-
-	h.Send(context.Background(), hub.NewRoundState(4, []string{"Agent-a", "Agent-b"}))
-	got := next(t, c).(session.RoundStateEvent)
-	if got.Round != 4 {
-		t.Errorf("round = %d, want 4", got.Round)
-	}
-	if want := []string{"Agent-a", "Agent-b"}; !reflect.DeepEqual(got.IDs, want) {
-		t.Errorf("flagged = %v, want %v", got.IDs, want)
-	}
-}
-
-// A Round state arrives as one event, in send order with the others.
-func TestRoundStateKeepsSendOrderWithOtherEvents(t *testing.T) {
-	h := startedHub(t)
-	c := newClient(t, h)
+	c := caughtUp(t, h)
 	ctx := context.Background()
 
-	h.Send(ctx, hub.NewMessage(hub.MessageTypeSystem, "hub", "before", 1))
-	h.Send(ctx, hub.NewRoundState(2, nil))
-	h.Send(ctx, hub.NewMessage(hub.MessageTypeRoundChange, "hub", "", 2))
+	h.Send(ctx, msg(hub.MessageTypeSystem, "before"))
+	h.Send(ctx, hub.NewRoundState(2, []string{"Agent-a", "Agent-b"}))
+	h.Send(ctx, hub.NewMessage(hub.MessageTypeRoundChange, "hub", "", 3))
 
-	if _, ok := next(t, c).(session.MessageEvent); !ok {
-		t.Error("first event is not the message")
+	expect[session.MessageEvent](t, c)
+	if ev := expect[session.RoundEvent](t, c); ev.Round != 2 || !reflect.DeepEqual(ev.Flagged, []string{"Agent-a", "Agent-b"}) {
+		t.Errorf("Round state = %+v, want round 2 with both flagged", ev)
 	}
-	if ev, ok := next(t, c).(session.RoundStateEvent); !ok || ev.Round != 2 || len(ev.IDs) != 0 {
-		t.Errorf("second event = %+v, want a RoundStateEvent for round 2 with no ids", ev)
-	}
-	if _, ok := next(t, c).(session.RoundEvent); !ok {
-		t.Error("third event is not the round change")
+	if ev := expect[session.RoundEvent](t, c); ev.Round != 3 || len(ev.Flagged) != 0 {
+		t.Errorf("Round change = %+v, want round 3 with no one flagged", ev)
 	}
 }
 
-func TestExtraTypesAreDeliveredOnlyToAClientThatAsks(t *testing.T) {
+// Agent failures and finished exports are the host's: a participant never
+// hears of them.
+func TestHostOnlyMessagesDoNotReachAParticipant(t *testing.T) {
 	h := startedHub(t)
-	host := newClient(t, h, hub.MessageTypeAgentError, hub.MessageTypeExportComplete)
-	participant := newClient(t, h)
-
+	c := caughtUp(t, h)
 	ctx := context.Background()
+
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeExportComplete, "hub", "saved", 1))
-	h.Send(ctx, hub.NewMessage(hub.MessageTypeSystem, "hub", "after", 1))
+	h.Send(ctx, hub.NewMessage(hub.MessageTypeAgentError, "hub", "boom", 1))
+	h.Send(ctx, msg(hub.MessageTypeSystem, "after"))
 
-	if ev, ok := next(t, host).(session.ExportEvent); !ok || ev.Path != "saved" {
-		t.Errorf("host first event = %+v, want an ExportEvent for \"saved\"", ev)
-	}
-	if ev := next(t, participant).(session.MessageEvent); ev.Message.Type != hub.MessageTypeSystem {
-		t.Errorf("participant first event = %s, want system (export_complete must not reach it)", ev.Message.Type)
+	if ev := expect[session.MessageEvent](t, c); ev.Message.Content != "after" {
+		t.Errorf("first event = %q, want the system message", ev.Message.Content)
 	}
 }
 
-func TestReadyMeansMessagesAreNowDelivered(t *testing.T) {
+// The coordinator records round changes and exports for the export file, but
+// no session shows them live, so Catch-up does not show them either (#76).
+func TestCatchUpShowsOnlyWhatALiveSessionShows(t *testing.T) {
 	h := startedHub(t)
-	c := session.New(h, me)
-	defer c.Close()
-	select {
-	case <-c.Ready():
-	case <-time.After(wait):
-		t.Fatal("never ready")
+	c := newParticipant(t, h, me)
+
+	d, r := msg(hub.MessageTypeDirective, "q"), msg(hub.MessageTypeResponse, "a")
+	recorded := []*hub.Message{
+		d,
+		msg(hub.MessageTypeNewRound, ""),
+		msg(hub.MessageTypeRoundChange, ""),
+		msg(hub.MessageTypeExport, "transcript.md"),
+		msg(hub.MessageTypeExportComplete, "/tmp/transcript.md"),
+		r,
 	}
-	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeSystem, "hub", "hello", 1))
-	if ev := next(t, c).(session.MessageEvent); ev.Message.Content != "hello" {
-		t.Errorf("got %q", ev.Message.Content)
+	h.Send(context.Background(), hub.NewTranscriptSnapshot(1, me, recorded, nil))
+
+	if got := contents(expect[session.CatchUpEvent](t, c).Messages); !reflect.DeepEqual(got, []string{"q", "a"}) {
+		t.Errorf("Messages = %q, want only the directive then the response", got)
+	}
+}
+
+// A live message the session already has from Catch-up is dropped; one it
+// does not have is kept.
+func TestLiveMessageAlreadyCaughtUpIsDropped(t *testing.T) {
+	h := startedHub(t)
+	c := newParticipant(t, h, me)
+	ctx := context.Background()
+	have, fresh := msg(hub.MessageTypeDirective, "have"), msg(hub.MessageTypeDirective, "fresh")
+
+	h.Send(ctx, hub.NewTranscriptSnapshot(1, me, []*hub.Message{have}, nil))
+	expect[session.CatchUpEvent](t, c)
+	h.Send(ctx, have)
+	h.Send(ctx, fresh)
+
+	if ev := expect[session.MessageEvent](t, c); ev.Message.ID != fresh.ID {
+		t.Errorf("got %q, want only the fresh message", ev.Message.Content)
 	}
 }
 
 func TestCloseReleasesAPendingNext(t *testing.T) {
 	h := startedHub(t)
-	c := newClient(t, h)
+	c := newParticipant(t, h, me)
 
 	released := make(chan bool, 1)
 	go func() {
@@ -233,7 +234,7 @@ func TestCloseReleasesAPendingNext(t *testing.T) {
 
 func TestSecondCloseIsHarmless(t *testing.T) {
 	h := startedHub(t)
-	c := newClient(t, h)
+	c := newParticipant(t, h, me)
 	c.Close()
 	c.Close()
 	if _, ok := c.Next(); ok {
@@ -265,14 +266,21 @@ func (c *countingHub) SubscribeTypes(ctx context.Context, ts []hub.MessageType, 
 }
 
 func TestCloseUnsubscribesEverything(t *testing.T) {
-	ch := &countingHub{Hub: startedHub(t)}
-	c := session.New(ch, me)
-	if ch.subs.Load() == 0 {
-		t.Fatal("client made no subscriptions; test is not exercising anything")
-	}
-	c.Close()
-	if got, want := ch.unsubs.Load(), ch.subs.Load(); got != want {
-		t.Errorf("unsubscribed %d of %d subscriptions", got, want)
+	for name, open := range map[string]func(hub.Hub) interface{ Close() }{
+		"participant": func(h hub.Hub) interface{ Close() } { return session.NewParticipant(h, me) },
+		"host":        func(h hub.Hub) interface{ Close() } { return session.NewHost(h) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			ch := &countingHub{Hub: startedHub(t)}
+			c := open(ch)
+			if ch.subs.Load() == 0 {
+				t.Fatal("client made no subscriptions; test is not exercising anything")
+			}
+			c.Close()
+			if got, want := ch.unsubs.Load(), ch.subs.Load(); got != want {
+				t.Errorf("unsubscribed %d of %d subscriptions", got, want)
+			}
+		})
 	}
 }
 
@@ -284,7 +292,7 @@ func (failingHub) SubscribeTypes(context.Context, []hub.MessageType, func(*hub.M
 }
 
 func TestFailedSubscriptionClosesTheClient(t *testing.T) {
-	c := session.New(failingHub{Hub: startedHub(t)}, me)
+	c := session.NewParticipant(failingHub{Hub: startedHub(t)}, me)
 	defer c.Close()
 
 	select {
