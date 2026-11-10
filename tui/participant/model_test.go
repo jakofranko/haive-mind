@@ -119,7 +119,7 @@ func TestParticipantModel_AddMessage(t *testing.T) {
 }
 
 func TestParticipantModel_Update_DirectiveMessage(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	model := join(t, h, "Agent-1", "Agent-1")
 
 	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeDirective, "host", "Test directive", 1))

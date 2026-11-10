@@ -11,7 +11,7 @@ import (
 // G20: the host's list can only be accurate if the hub is told what each
 // participant is doing.
 func TestParticipantStatus_FollowsTypingSubmittingAndNewRound(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	m := join(t, h, "Agent-alice", "Alice")
 	status := statusOf(t, h, "Agent-alice")
 
@@ -41,7 +41,7 @@ func TestParticipantStatus_FollowsTypingSubmittingAndNewRound(t *testing.T) {
 
 // Deleting everything they typed puts them back to idle.
 func TestParticipantStatus_EmptyingTheBox_ReturnsToIdle(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	m := join(t, h, "Agent-alice", "Alice")
 	status := statusOf(t, h, "Agent-alice")
 

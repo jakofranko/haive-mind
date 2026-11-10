@@ -12,7 +12,7 @@ import (
 // A participant who joins late sees the conversation so far, and what comes
 // after it follows it.
 func TestCatchUp_ShowsTheEarlierConversationBeforeWhatFollows(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	ctx := context.Background()
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeSystem, "hub", "first entry", 1))
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeSystem, "hub", "second entry", 1))
@@ -30,7 +30,7 @@ func TestCatchUp_ShowsTheEarlierConversationBeforeWhatFollows(t *testing.T) {
 // A participant who joins after a new round sees the current round, and who
 // else is here.
 func TestCatchUp_ShowsTheRoundAndWhoIsHere(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	bob := join(t, h, "Agent-bob", "Bob")
 	h.StartRound(1)
 	receiveUntil(t, bob, shows("Participants (Round 2"))

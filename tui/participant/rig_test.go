@@ -13,18 +13,17 @@ import (
 
 // serverHub is a started hub with the Coordinator beside it, as the server
 // runs them, so a session is caught up the way a real one is.
-func serverHub(t *testing.T) (hub.Hub, *coordinator.Coordinator) {
+func serverHub(t *testing.T) hub.Hub {
 	t.Helper()
 	h := hub.NewHub()
 	if err := h.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { h.Stop() })
-	c := coordinator.New(h)
-	if err := c.Start(context.Background()); err != nil {
+	if err := coordinator.New(h).Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	return h, c
+	return h
 }
 
 // join is what the SSH server does for a participant: it makes the model
@@ -99,23 +98,13 @@ func sized(m *ParticipantModel) *ParticipantModel {
 	return step(m, tea.WindowSizeMsg{Width: 140, Height: 40})
 }
 
-// submitted is alice, who has already sent an answer the Coordinator has
-// recorded.
+// submitted is alice, who has already sent an answer.
 func submitted(t *testing.T, answer string) (*ParticipantModel, hub.Hub) {
 	t.Helper()
-	h, c := serverHub(t)
+	h := serverHub(t)
 	m := join(t, h, "Agent-alice", "Alice")
 	m = typeRunes(m, answer)
 	m = step(m, tea.KeyMsg{Type: tea.KeyEnter})
-	// The Coordinator records responses and flags on separate mailboxes; a
-	// flag handled first would be lifted by the response as a resubmission.
-	deadline := time.Now().Add(5 * time.Second)
-	for c.LastSubmission("Agent-alice") == nil {
-		if time.Now().After(deadline) {
-			t.Fatal("the answer was never recorded")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
 	return m, h
 }
 

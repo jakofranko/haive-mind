@@ -17,18 +17,11 @@ import (
 // Round state and Transcript snapshots arrive in the order the server sends.
 func coordinatedHub(t *testing.T) hub.Hub {
 	t.Helper()
-	h, _ := hubAndCoordinator(t)
-	return h
-}
-
-func hubAndCoordinator(t *testing.T) (hub.Hub, *coordinator.Coordinator) {
-	t.Helper()
 	h := startedHub(t)
-	c := coordinator.New(h)
-	if err := c.Start(context.Background()); err != nil {
+	if err := coordinator.New(h).Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	return h, c
+	return h
 }
 
 // eventually fails the test unless cond comes true in time.
@@ -240,13 +233,10 @@ func TestParticipantRevision_EitherArrivalOrder(t *testing.T) {
 // The real server order: a participant who reconnects while flagged is asked
 // once, with the answer they sent before the connection dropped.
 func TestParticipantRevision_ReconnectingWhileFlagged(t *testing.T) {
-	h, coord := hubAndCoordinator(t)
+	h := coordinatedHub(t)
 	first := connect(t, h, me)
 	expect[session.CatchUpEvent](t, first)
 	first.Submit("use postgres")
-	// The Coordinator records responses and flags on separate mailboxes; a
-	// flag handled first would be lifted by the response as a resubmission.
-	eventually(t, "the answer is recorded", func() bool { return coord.LastSubmission(me) != nil })
 	h.Send(context.Background(), hub.NewFlag(1, me))
 	until[session.RevisionEvent](t, first)
 	first.Close()

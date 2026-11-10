@@ -28,7 +28,7 @@ func youRows(t *testing.T, m *ParticipantModel) []string {
 
 func sidebarModel(t *testing.T, id string, people map[string]string) *ParticipantModel {
 	t.Helper()
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	for pid, name := range people {
 		if pid != id {
 			h.SetDisplayName(pid, name)

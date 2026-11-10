@@ -57,7 +57,7 @@ func TestParticipant_SidebarRowMatchesHubIdentity(t *testing.T) {
 
 // #29: when someone else disconnects, a participant's sidebar drops them.
 func TestParticipant_OtherDisconnecting_RemovesThemFromSidebar(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	m := join(t, h, "Agent-bob", "Bob")
 
 	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
