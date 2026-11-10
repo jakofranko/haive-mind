@@ -35,7 +35,7 @@ func drainMessages(m *ParticipantModel) []string {
 // G6: a burst of hub messages larger than the model's inbound buffer must
 // all be delivered, not silently dropped.
 func TestParticipantModel_BurstOfMessages_NoneDropped(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	m := join(t, h, "Agent-alice", "Alice") // nothing drains while the burst is sent
 
 	const n = 300
@@ -52,7 +52,7 @@ func TestParticipantModel_BurstOfMessages_NoneDropped(t *testing.T) {
 // G23: messages of different types reach the model in the order they were
 // sent, so the transcript the participant sees is linear.
 func TestParticipantModel_MixedTypes_ArriveInSendOrder(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	m := join(t, h, "Agent-alice", "Alice")
 
 	const n = 200
@@ -76,7 +76,7 @@ func TestParticipantModel_MixedTypes_ArriveInSendOrder(t *testing.T) {
 // G11: the synthesized aggregate draft is shared with everyone, so a
 // participant receives it like any other transcript message.
 func TestParticipantModel_ReceivesAggregateDraft(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	m := join(t, h, "Agent-alice", "Alice")
 
 	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "draft-text", 1))

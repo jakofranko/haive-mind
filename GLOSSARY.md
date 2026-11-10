@@ -23,7 +23,7 @@ A one-off `opencode run` with no session context, used only to turn a round's qu
 _Avoid_: Summarizer, aggregator
 
 **Coordinator**:
-The session state that sits beside the hub: the transcript, the current round, each participant's responses, and who is flagged. Reacts to hub messages; never invokes the agent.
+The session state that sits beside the hub: the transcript, the current round, each participant's responses, and who is flagged. Applies hub messages one at a time, in the order the hub sent them; never invokes the agent.
 _Avoid_: Controller, manager, session
 
 ### Identity

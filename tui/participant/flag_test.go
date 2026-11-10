@@ -121,7 +121,7 @@ func TestFlagged_DoesNotOfferAnAnswerFromAnEarlierRound(t *testing.T) {
 
 // Submitting takes the box's text; a blank box sends nothing.
 func TestSubmit_BlankBoxSendsNothing(t *testing.T) {
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	m := join(t, h, "Agent-alice", "Alice")
 
 	m = typeRunes(m, "   ")

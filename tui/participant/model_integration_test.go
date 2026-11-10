@@ -89,7 +89,7 @@ func eventuallyDrawn(t *testing.T, out *syncBuffer, want ...string) {
 // the model first, then the registration that catches it up.
 func runJoined(t *testing.T) (hub.Hub, *syncBuffer) {
 	t.Helper()
-	h, _ := serverHub(t)
+	h := serverHub(t)
 	h.SetDisplayName("Agent-user1", "Participant One")
 	h.RegisterParticipant(hub.NewParticipantEvent("host", "Host", hub.StatusIdle, hub.ParticipantEventConnect))
 	out := runProgram(t, NewParticipantModel(h, "Agent-user1", "user1"))
