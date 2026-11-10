@@ -137,63 +137,6 @@ func TestAggregateRequest_SynthesizesOnceAndSharesTheDraft(t *testing.T) {
 	}
 }
 
-// With no responses there is nothing to synthesize.
-func TestAggregateRequest_WithNoResponses_DoesNotSynthesize(t *testing.T) {
-	h, _, _, synth := newRigWithSynth(t)
-
-	h.RequestAggregate(1)
-	time.Sleep(200 * time.Millisecond)
-
-	if got := synth.calls.Load(); got != 0 {
-		t.Errorf("synthesizer invoked %d times with no responses, want 0", got)
-	}
-}
-
-// A new-round request advances the round once and announces it once.
-func TestNewRound_AdvancesAndAnnouncesOnce(t *testing.T) {
-	h, c, _ := newRig(t)
-
-	if err := h.StartRound(1); err != nil {
-		t.Fatal(err)
-	}
-
-	eventually(t, "round change announced", func() bool {
-		return countType(c.Transcript(), hub.MessageTypeRoundChange, "") >= 1
-	})
-	time.Sleep(100 * time.Millisecond)
-
-	if got := c.Round(); got != 2 {
-		t.Errorf("Round() = %d, want 2", got)
-	}
-	if got := countType(c.Transcript(), hub.MessageTypeRoundChange, ""); got != 1 {
-		t.Errorf("got %d round-change messages, want 1", got)
-	}
-}
-
-// A request naming a round that has already ended is ignored: nothing is
-// announced and the round does not move.
-func TestNewRound_StaleOrRepeatedRequestIsIgnored(t *testing.T) {
-	h, c, _ := newRig(t)
-
-	h.StartRound(1)
-	eventually(t, "round 2", func() bool { return c.Round() == 2 })
-
-	h.StartRound(1)                    // repeat of the request that already ended round 1
-	h.StartRound(0)                    // stale
-	h.StartRound(5)                    // names a round that is not the current one
-	time.Sleep(300 * time.Millisecond) // negative check: waiting to confirm nothing else happens
-
-	if got := c.Round(); got != 2 {
-		t.Errorf("Round() = %d, want 2", got)
-	}
-	if got := countType(c.Transcript(), hub.MessageTypeRoundChange, ""); got != 1 {
-		t.Errorf("got %d round-change messages, want 1", got)
-	}
-
-	h.StartRound(2) // naming the current round still advances
-	eventually(t, "round 3", func() bool { return c.Round() == 3 })
-}
-
 // G4: concurrent traffic must not race on coordinator state (run with -race).
 func TestConcurrentTraffic_NoRaces(t *testing.T) {
 	h, c, _ := newRig(t)

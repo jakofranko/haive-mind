@@ -80,6 +80,17 @@ func (t MessageType) Shown() bool {
 	return false
 }
 
+// Recorded reports whether the coordinator keeps a message of this type in
+// the transcript.
+func (t MessageType) Recorded() bool {
+	for _, r := range recordedTypes {
+		if r == t {
+			return true
+		}
+	}
+	return false
+}
+
 type Message struct {
 	ID   string      `json:"id"`
 	Type MessageType `json:"type"`
