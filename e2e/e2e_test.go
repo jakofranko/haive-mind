@@ -156,6 +156,8 @@ func binaries(t *testing.T) string {
 			exe("haive-mind"): "./cmd/haive-mind",
 			exe("opencode"):   "./e2e/fakeagent",
 		} {
+			// The test cache cannot see what this build reads, so run e2e
+			// uncached (-count=1, or scripts/check.sh --full).
 			cmd := exec.Command("go", "build", "-o", filepath.Join(buildDir, out), pkg)
 			cmd.Dir = root
 			if b, err := cmd.CombinedOutput(); err != nil {
