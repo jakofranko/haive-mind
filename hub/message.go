@@ -2,6 +2,7 @@ package hub
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -71,25 +72,11 @@ func RecordedTypes() []MessageType { return append([]MessageType{}, recordedType
 
 // Shown reports whether a session shows a message of this type as a
 // transcript entry.
-func (t MessageType) Shown() bool {
-	for _, s := range shownTypes {
-		if s == t {
-			return true
-		}
-	}
-	return false
-}
+func (t MessageType) Shown() bool { return slices.Contains(shownTypes, t) }
 
 // Recorded reports whether the coordinator keeps a message of this type in
 // the transcript.
-func (t MessageType) Recorded() bool {
-	for _, r := range recordedTypes {
-		if r == t {
-			return true
-		}
-	}
-	return false
-}
+func (t MessageType) Recorded() bool { return slices.Contains(recordedTypes, t) }
 
 type Message struct {
 	ID   string      `json:"id"`

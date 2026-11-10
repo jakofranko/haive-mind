@@ -29,22 +29,24 @@ func New(h hub.Hub) *Coordinator {
 // Start subscribes the coordinator to the hub. One subscription for every type
 // it needs, so messages are applied in the order the hub sent them.
 func (c *Coordinator) Start(ctx context.Context) error {
-	_, err := c.hub.SubscribeTypes(ctx, Types(), c.apply)
+	_, err := c.hub.SubscribeTypes(ctx, AppliedTypes(), c.apply)
 	return err
 }
 
 // apply runs on the subscription's single mailbox, so the sends go out in the
-// order Apply returned them, and before the next message is applied.
+// order Apply returned them, and before the next message is applied. Sends
+// fail only once the hub has stopped, so a failure does not skip the rest.
 func (c *Coordinator) apply(msg *hub.Message) error {
 	c.mu.Lock()
 	out := c.state.Apply(msg)
 	c.mu.Unlock()
+	var first error
 	for _, m := range out {
-		if err := c.hub.Send(context.Background(), m); err != nil {
-			return err
+		if err := c.hub.Send(context.Background(), m); err != nil && first == nil {
+			first = err
 		}
 	}
-	return nil
+	return first
 }
 
 // Round returns the current round number.

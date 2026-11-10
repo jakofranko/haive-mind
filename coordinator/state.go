@@ -1,6 +1,7 @@
 package coordinator
 
 import (
+	"slices"
 	"sort"
 	"strings"
 
@@ -41,25 +42,16 @@ var handledTypes = []hub.MessageType{
 	hub.MessageTypeParticipantEvent,
 }
 
-// Types returns every message type Apply needs to see: the recorded types and
-// the ones it acts on.
-func Types() []hub.MessageType {
+// AppliedTypes returns every message type Apply needs to see: the recorded
+// types and the ones it acts on.
+func AppliedTypes() []hub.MessageType {
 	types := hub.RecordedTypes()
 	for _, t := range handledTypes {
-		if !contains(types, t) {
+		if !slices.Contains(types, t) {
 			types = append(types, t)
 		}
 	}
 	return types
-}
-
-func contains(types []hub.MessageType, t hub.MessageType) bool {
-	for _, x := range types {
-		if x == t {
-			return true
-		}
-	}
-	return false
 }
 
 // Apply applies one hub message and returns the messages to publish, in order.

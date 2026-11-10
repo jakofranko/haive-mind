@@ -82,29 +82,37 @@ func TestAdapter_FlagSentAfterResponseStaysRaised(t *testing.T) {
 	}
 }
 
-// What the Coordinator publishes goes out in the order it applied the
-// messages that caused it.
+// What the Coordinator publishes goes out in the order Apply returned it: each
+// new round's Round state, then its Round change, round after round.
 func TestAdapter_SendsGoOutInOrder(t *testing.T) {
 	h, _, _ := newRig(t)
-	states := collect(t, h, hub.MessageTypeRoundState)
-
-	var want []string
-	const n = 30
-	for i := 0; i < n; i++ {
-		id := fmt.Sprintf("Agent-p%02d", i)
-		flag(h, id, true)
-		want = append(want, id)
+	var mu sync.Mutex
+	var got []string
+	if _, err := h.SubscribeTypes(context.Background(), []hub.MessageType{hub.MessageTypeRoundState, hub.MessageTypeRoundChange}, func(m *hub.Message) error {
+		mu.Lock()
+		got = append(got, fmt.Sprintf("%s %d", m.Type, m.Round))
+		mu.Unlock()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
-	eventually(t, "a round state per flag", func() bool { return len(states.all()) == n })
 
-	for i, m := range states.all() {
-		_, ids, err := m.RoundState()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got, wantNow := strings.Join(ids, ","), strings.Join(want[:i+1], ","); got != wantNow {
-			t.Fatalf("round state %d = [%s], want [%s] (out of order)", i, got, wantNow)
-		}
+	const n = 30
+	var want []string
+	for r := 1; r <= n; r++ {
+		h.StartRound(r)
+		want = append(want, fmt.Sprintf("round_state %d", r+1), fmt.Sprintf("round_change %d", r+1))
+	}
+	eventually(t, "every round announced", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(got) == len(want)
+	})
+
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("published\n%v\nwant\n%v", got, want)
 	}
 }
 
