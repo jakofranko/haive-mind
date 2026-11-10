@@ -15,14 +15,6 @@ func directive(text string, round int) *hub.Message {
 	return hub.NewMessage(hub.MessageTypeDirective, "Host", text, round)
 }
 
-// response is a participant's response the way a session sends it: From is the
-// display name, FromID the stable id.
-func response(id, display, text string, round int) *hub.Message {
-	m := hub.NewMessage(hub.MessageTypeResponse, display, text, round)
-	m.FromID = id
-	return m
-}
-
 func newRound(round int) *hub.Message {
 	return hub.NewMessage(hub.MessageTypeNewRound, "hub", "", round)
 }

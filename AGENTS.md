@@ -1,3 +1,7 @@
+## Checks
+
+`bash scripts/check.sh` while working (fast, no e2e); `bash scripts/check.sh --full` before committing (CI's exact run). `bash scripts/red.sh` runs new tests against an earlier ref to show red.
+
 ## Agent skills
 
 ### Issue tracker

@@ -63,6 +63,14 @@ func eventually(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+// response is a participant's response the way a session sends it: From is the
+// display name, FromID the stable id.
+func response(id, display, text string, round int) *hub.Message {
+	m := hub.NewMessage(hub.MessageTypeResponse, display, text, round)
+	m.FromID = id
+	return m
+}
+
 func countType(msgs []*hub.Message, typ hub.MessageType, from string) int {
 	n := 0
 	for _, m := range msgs {

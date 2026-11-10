@@ -9,7 +9,8 @@ Judgement calls for review. Formatting, `go vet` and the race detector are enfor
 - **Wait for the outcome**: poll with `eventually`, `waitFor` or `eventuallyDrawn`, with deadlines sized for a loaded machine. Use a fixed sleep only to let a "nothing else happens" check settle.
 - **Observe a running Bubble Tea program through its drawn output**, never its model fields, so the test and the program do not touch the same state from two goroutines.
 - **Give a hub a stub runner (`SetAgentRunner`/`SetSynthesizer`) when a test sends a directive or aggregate.** `NewHub()` has no runner of its own, so nothing in a test can launch the real `opencode`.
-- **Show red first**: a new test fails for the stated reason before the code that fixes it; break the fix once to confirm the test can fail.
+- **Show red first**: a new test fails for the stated reason before the code that fixes it; break the fix once to confirm the test can fail. The commit message says how it went red: the failing test and what it reported.
+- **Red for a race is a fail rate**: run the test against the code before the fix with `scripts/red.sh` and quote its tally in the commit message, and pair it with a test at a synchronous seam that fails every time.
 
 ## Design
 
