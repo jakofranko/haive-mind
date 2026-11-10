@@ -41,6 +41,9 @@ type roleHooks interface {
 	flagsSet() []Event
 	// roundChanged runs when a new round starts.
 	roundChanged()
+	// event turns any other message, seen for the first time, into the
+	// role's event for it, or nil to drop it.
+	event(msg *hub.Message) Event
 }
 
 // core is what every role's Session client shares: one ordered subscription,
@@ -117,6 +120,7 @@ func (c *core) catchUp(snapshot *hub.Message) {
 		return
 	}
 	var ev CatchUpEvent
+	var after []Event // what arrived early that is not a transcript entry
 	for _, m := range recorded {
 		if m.Type.Shown() && c.firstSight(m.ID) {
 			ev.Messages = append(ev.Messages, *m)
@@ -133,8 +137,15 @@ func (c *core) catchUp(snapshot *hub.Message) {
 		case hub.MessageTypeParticipantEvent:
 			// The roster below is read after it, so it already says this.
 		default:
-			if m.Type.Shown() && c.firstSight(m.ID) {
-				ev.Messages = append(ev.Messages, *m)
+			if !c.firstSight(m.ID) {
+				continue
+			}
+			switch e := c.hooks.event(m).(type) {
+			case nil:
+			case MessageEvent:
+				ev.Messages = append(ev.Messages, e.Message)
+			default:
+				after = append(after, e)
 			}
 		}
 	}
@@ -149,6 +160,7 @@ func (c *core) catchUp(snapshot *hub.Message) {
 	}
 	follow := c.hooks.caughtUp(last)
 	c.inbox.Push(ev)
+	c.push(after)
 	c.push(follow)
 }
 
@@ -173,10 +185,21 @@ func (c *core) apply(msg *hub.Message) {
 		c.inbox.Push(RoundEvent{Round: c.round, Flagged: append([]string{}, ids...)})
 		c.push(follow)
 	default:
-		if msg.Type.Shown() && c.firstSight(msg.ID) {
-			c.inbox.Push(MessageEvent{Message: *msg})
+		if !c.firstSight(msg.ID) {
+			return
+		}
+		if ev := c.hooks.event(msg); ev != nil {
+			c.inbox.Push(ev)
 		}
 	}
+}
+
+// transcriptEntry is the event for a message every role shows as is.
+func transcriptEntry(msg *hub.Message) Event {
+	if msg.Type.Shown() {
+		return MessageEvent{Message: *msg}
+	}
+	return nil
 }
 
 func (c *core) push(evs []Event) {
