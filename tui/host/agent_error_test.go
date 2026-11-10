@@ -1,84 +1,53 @@
 package host
 
 import (
+	"context"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/session"
 )
 
-// run feeds a command's message back into the model, as Bubble Tea would.
-func run(m *AppModel, cmd tea.Cmd) *AppModel {
-	if cmd == nil {
-		return m
-	}
-	msg := runBounded(cmd)
-	if batch, ok := msg.(tea.BatchMsg); ok {
-		for _, c := range batch {
-			m = run(m, c)
-		}
-		return m
-	}
-	if msg == nil {
-		return m
-	}
-	updated, next := m.Update(msg)
-	return run(updated.(*AppModel), next)
-}
+// hostWithFailure is a host whose last directive failed, showing the toast.
+func hostWithFailure(t *testing.T) (*AppModel, func() []*hub.Message) {
+	t.Helper()
+	h, _ := serverHub(t)
+	m := joinHost(t, h)
+	sent := recordSent(t, h, hub.MessageTypeDirective)
+	failure := hub.NewMessage(hub.MessageTypeAgentError, "hub", "Agent error: boom", 1)
+	failure.Retry = &hub.Retry{Type: hub.MessageTypeDirective, Content: "ask again"}
 
-func agentErrorMsg(text string, retry hub.Retry) eventMsg {
-	msg := hub.NewMessage(hub.MessageTypeAgentError, "hub", text, 1)
-	msg.Retry = &retry
-	return eventMsg{session.MessageEvent{Message: *msg}}
+	h.Send(context.Background(), failure)
+	updated, cmd := m.Update(nextMsg(t, m))
+	return run(updated.(*AppModel), cmd), sent
 }
 
 // G16: an agent failure surfaces as a toast on the host, and Retry sends the
-// failed message to the hub again.
+// failed message to the hub again, as the host.
 func TestHost_AgentErrorShowsToastAndRetryResends(t *testing.T) {
-	h, sent := sentRig(t, hub.MessageTypeDirective)
-	m := NewAppModel(h)
-
-	updated, cmd := m.Update(agentErrorMsg("Agent error: boom", hub.Retry{Type: hub.MessageTypeDirective, Content: "ask again"}))
-	m = run(updated.(*AppModel), cmd)
+	m, sent := hostWithFailure(t)
 
 	assert.Contains(t, m.View(), "boom")
 	assert.Contains(t, m.View(), "Retry")
 
-	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	run(updated.(*AppModel), cmd)
 
 	got := sent()
 	if assert.Len(t, got, 1) {
 		assert.Equal(t, "ask again", got[0].Content)
 		assert.Equal(t, hub.MessageTypeDirective, got[0].Type)
+		assert.Equal(t, "TestHost", got[0].From)
 	}
 }
 
 func TestHost_AgentErrorDismissDoesNotResend(t *testing.T) {
-	h, sent := sentRig(t, hub.MessageTypeDirective)
-	m := NewAppModel(h)
+	m, sent := hostWithFailure(t)
 
-	updated, cmd := m.Update(agentErrorMsg("Agent error: boom", hub.Retry{Type: hub.MessageTypeDirective, Content: "ask again"}))
-	m = run(updated.(*AppModel), cmd)
-	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = run(updated.(*AppModel), cmd)
 
 	assert.NotContains(t, m.View(), "boom")
 	assert.Empty(t, sent())
-}
-
-// runBounded executes a command, giving up on one that waits (a timer, such as
-// the toast's auto-hide) rather than blocking the test.
-func runBounded(cmd tea.Cmd) tea.Msg {
-	out := make(chan tea.Msg, 1)
-	go func() { out <- cmd() }()
-	select {
-	case msg := <-out:
-		return msg
-	case <-time.After(150 * time.Millisecond):
-		return nil
-	}
 }

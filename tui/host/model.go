@@ -1,10 +1,8 @@
 package host
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -29,12 +27,9 @@ const (
 
 // AppModel is the main TUI model that composes child pane models
 type AppModel struct {
-	hub         hub.Hub
-	width       int
-	height      int
-	activePane  int
-	round       int
-	displayName string
+	width      int
+	height     int
+	activePane int
 
 	// Child models
 	transcript   transcript.Model
@@ -51,8 +46,9 @@ type AppModel struct {
 	// aggregate for the host to edit; Enter then sends it as the aggregate.
 	draftingAggregate bool
 
-	// The session's conversation with the hub.
-	client *session.Client
+	// The session's conversation with the hub: it knows the round and sends
+	// on the host's behalf.
+	client *session.Host
 }
 
 func NewAppModel(hubChans hub.Hub) *AppModel {
@@ -64,25 +60,17 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 	namePrompt.Width = 40
 
 	m := &AppModel{
-		hub:              hubChans,
-		activePane:       paneTranscript,
-		round:            1,
-		displayName:      "Host",
-		transcript:       transcript.New(),
-		participants:     participants.New(),
-		directive:        directive.New(),
-		buttons:          buttons.New(),
-		toast:            toast.New(),
-		namePrompt:       namePrompt,
-		namePromptActive: false,
-		// The host also hears about failed agent calls and finished exports.
-		client: session.New(hubChans, hub.HostID, hub.MessageTypeAgentError, hub.MessageTypeExportComplete),
+		activePane:   paneTranscript,
+		transcript:   transcript.New(),
+		participants: participants.New(),
+		directive:    directive.New(),
+		buttons:      buttons.New(),
+		toast:        toast.New(),
+		namePrompt:   namePrompt,
+		client:       session.NewHost(hubChans),
 	}
 
-	// Check if we have a stored display name
-	if displayName := hubChans.GetDisplayName(hub.HostID); displayName != "" {
-		m.displayName = displayName
-	} else {
+	if m.client.DisplayName() == "" {
 		// First time - activate name prompt
 		m.activePane = paneNamePrompt
 		m.namePromptActive = true
@@ -99,7 +87,7 @@ func (m *AppModel) Close() {
 
 func (m *AppModel) Init() tea.Cmd {
 	if m.namePromptActive {
-		return tea.Batch(textinput.Blink, m.waitForEvent(), m.initialParticipants())
+		return tea.Batch(textinput.Blink, m.waitForEvent())
 	}
 	return tea.Batch(
 		m.transcript.Init(),
@@ -108,14 +96,7 @@ func (m *AppModel) Init() tea.Cmd {
 		m.buttons.Init(),
 		m.toast.Init(),
 		m.waitForEvent(),
-		m.initialParticipants(),
 	)
-}
-
-type initialParticipantsMsg []hub.Participant
-
-func (m *AppModel) initialParticipants() tea.Cmd {
-	return func() tea.Msg { return initialParticipantsMsg(m.client.Participants()) }
 }
 
 // eventMsg carries one event from the session client into Update.
@@ -163,10 +144,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		return m, tea.Batch(m.reduce(msg.Event), m.waitForEvent())
 
-	case initialParticipantsMsg:
-		m.participants.SetParticipants(msg)
-		return m, nil
-
 	case errorMsg:
 		m.transcript.AddSystemMessage("Error: " + msg.Error())
 		return m, nil
@@ -184,16 +161,18 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // a command when the event calls for one (the agent-failure toast).
 func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 	switch ev := ev.(type) {
+	case session.CatchUpEvent:
+		m.transcript.PrependMessages(ev.Messages)
+		m.participants.SetParticipants(ev.Participants)
+		m.participants.SetRound(ev.Round)
+		m.participants.SetFlagged(ev.Flagged)
 	case session.MessageEvent:
-		switch ev.Message.Type {
-		case hub.MessageTypeAgentError:
-			return m.showAgentError(ev.Message)
-		case hub.MessageTypeAggregateDraft:
-			m.transcript.AddMessage(ev.Message)
-			m.openDraft(ev.Message.Content)
-		default:
-			m.transcript.AddMessage(ev.Message)
-		}
+		m.transcript.AddMessage(ev.Message)
+	case session.DraftEvent:
+		m.transcript.AddMessage(ev.Message)
+		m.openDraft(ev.Message.Content)
+	case session.AgentFailedEvent:
+		return m.showAgentError(ev)
 	case session.ParticipantEvent:
 		if ev.Participant.Status == hub.StatusDisconnected {
 			m.participants.RemoveParticipant(ev.Participant.ID)
@@ -201,14 +180,8 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 			m.participants.UpdateParticipant(*ev.Participant)
 		}
 	case session.RoundEvent:
-		m.round = ev.Round
-		m.participants.SetRound(m.round)
-	case session.RoundStateEvent:
-		m.round = ev.Round
-		m.participants.SetRound(m.round)
-		m.participants.SetFlagged(ev.IDs)
-	case session.SnapshotEvent:
-		m.transcript.PrependMessages(ev.Messages)
+		m.participants.SetRound(ev.Round)
+		m.participants.SetFlagged(ev.Flagged)
 	case session.ExportEvent:
 		m.transcript.AddSystemMessage("Exported to " + ev.Path)
 	}
@@ -312,8 +285,7 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if keyStr == "enter" {
 			name := strings.TrimSpace(m.namePrompt.Value())
 			if name != "" {
-				m.displayName = name
-				m.hub.SetDisplayName(hub.HostID, name)
+				m.client.Rename(name)
 				m.namePromptActive = false
 				m.activePane = paneTranscript
 				m.namePrompt.Blur()
@@ -398,18 +370,14 @@ func isCtrlPressed(msg tea.KeyMsg) bool {
 }
 
 func (m *AppModel) handleDirectiveSend() (tea.Model, tea.Cmd) {
-	content := strings.TrimSpace(m.directive.Value())
-	if content == "" {
+	send := m.client.SendDirective
+	if m.draftingAggregate {
+		send = m.client.SendAggregate
+	}
+	if !send(m.directive.Value()) {
 		return m, nil
 	}
-
-	msgType := hub.MessageTypeDirective
-	if m.draftingAggregate {
-		msgType = hub.MessageTypeAggregate
-		m.draftingAggregate = false
-	}
-	msg := hub.NewMessage(msgType, m.displayName, content, m.round)
-	m.hub.Send(context.Background(), msg)
+	m.draftingAggregate = false
 
 	m.directive.Reset()
 	return m, m.directive.Focus()
@@ -430,18 +398,17 @@ func (m *AppModel) handleButtonPress() (tea.Model, tea.Cmd) {
 		if n := m.participants.FlaggedCount(); n > 0 {
 			return m, m.confirmAggregate(n)
 		}
-		m.hub.RequestAggregate(m.round)
+		m.client.RequestAggregate()
 	case "[Send]":
 		return m.handleDirectiveSend()
 	case "[New Round]":
-		// Name the round being ended. The coordinator owns the next number and
-		// ignores a repeat; we adopt the new round on RoundChange.
-		m.hub.StartRound(m.round)
+		// The coordinator owns the next number; the client names the round
+		// being ended, so a repeat is ignored.
+		m.client.NewRound()
 	case "[Resolve]":
-		m.hub.Send(context.Background(), hub.NewResolve(m.round))
+		m.client.Resolve()
 	case "[Export]":
-		exportPath := "transcript_" + time.Now().Format("20060102_150405") + ".json"
-		m.hub.Export(exportPath)
+		m.client.Export()
 	}
 	return m, nil
 }
@@ -503,38 +470,34 @@ func (m *AppModel) namePromptView() string {
 }
 
 // showAgentError raises a toast for a failed agent call; Retry sends the failed
-// message through the hub again.
-func (m *AppModel) showAgentError(failed hub.Message) tea.Cmd {
+// message again.
+func (m *AppModel) showAgentError(failed session.AgentFailedEvent) tea.Cmd {
 	var retry func() tea.Cmd
-	if failed.Retry != nil {
-		again := *failed.Retry
-		round := failed.Round
+	if failed.CanRetry {
 		retry = func() tea.Cmd {
 			return func() tea.Msg {
-				if err := m.hub.Send(context.Background(), hub.NewMessage(again.Type, hub.HostID, again.Content, round)); err != nil {
+				if err := m.client.Retry(failed); err != nil {
 					return errorMsg(err)
 				}
 				return nil
 			}
 		}
 	}
-	return toast.ShowToast(failed.Content, true, retry)
+	return toast.ShowToast(failed.Text, true, retry)
 }
 
 // toggleFlag asks the coordinator to flag (or unflag) the selected
-// participant. The host cannot flag themselves.
+// participant. The client refuses to flag the host.
 func (m *AppModel) toggleFlag() (tea.Model, tea.Cmd) {
 	p, ok := m.participants.Selected()
-	if !ok || p.ID == hub.HostID {
+	if !ok {
 		return m, nil
 	}
-	var msg *hub.Message
 	if m.participants.IsFlagged(p.ID) {
-		msg = hub.NewUnflag(m.round, p.ID)
+		m.client.Unflag(p.ID)
 	} else {
-		msg = hub.NewFlag(m.round, p.ID)
+		m.client.Flag(p.ID)
 	}
-	m.hub.Send(context.Background(), msg)
 	return m, nil
 }
 
@@ -546,10 +509,9 @@ func (m *AppModel) confirmAggregate(flagged int) tea.Cmd {
 		who = "participants are"
 	}
 	text := fmt.Sprintf("%d %s still flagged for revision. Aggregate anyway?", flagged, who)
-	round := m.round
 	return toast.ShowAction(text, "Continue", func() tea.Cmd {
 		return func() tea.Msg {
-			m.hub.RequestAggregate(round)
+			m.client.RequestAggregate()
 			return nil
 		}
 	})
