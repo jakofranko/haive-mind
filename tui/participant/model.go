@@ -23,16 +23,17 @@ const (
 )
 
 type ParticipantModel struct {
-	hub           hub.Hub
-	width         int
-	height        int
-	activePane    int
-	round         int
-	id            string // stable hub identity (set by the SSH server); never changes
-	displayName   string // what others see; chosen by the person
-	lastSubmitted string // what they last sent, offered back when the host asks for a revision
-	flaggedSelf   bool   // the host currently has this participant flagged
-	status        hub.ParticipantStatus
+	hub                hub.Hub
+	width              int
+	height             int
+	activePane         int
+	round              int
+	id                 string // stable hub identity (set by the SSH server); never changes
+	displayName        string // what others see; chosen by the person
+	lastSubmitted      string // what they last sent, offered back when the host asks for a revision
+	lastSubmittedRound int    // the round lastSubmitted was sent in; it is offered back only in that round
+	flaggedSelf        bool   // the host currently has this participant flagged
+	status             hub.ParticipantStatus
 
 	transcript transcript.Model
 	sidebar    sidebar.Model
@@ -162,6 +163,7 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 		m.transcript.PrependMessages(ev.Messages)
 		if ev.LastSubmission != nil {
 			m.lastSubmitted = ev.LastSubmission.Content
+			m.lastSubmittedRound = ev.LastSubmission.Round
 			// Round state arrives before the snapshot, so a participant who
 			// reconnects already flagged learns of their last answer only now.
 			if m.flaggedSelf {
@@ -303,6 +305,7 @@ func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
 	msg := hub.NewMessage(hub.MessageTypeResponse, m.displayName, content, m.round)
 	msg.FromID = m.id
 	m.lastSubmitted = content
+	m.lastSubmittedRound = msg.Round
 	m.hub.Send(context.Background(), msg)
 	m.setStatus(hub.StatusSubmitted)
 	m.hub.SetDraft(m.id, "")
@@ -415,9 +418,9 @@ func (m *ParticipantModel) applyFlags(ids []string) {
 }
 
 // restoreLastSubmission puts the last answer back for editing, unless the
-// participant is already typing.
+// participant is already typing or the answer is from an earlier round.
 func (m *ParticipantModel) restoreLastSubmission() {
-	if strings.TrimSpace(m.response.Value()) == "" && m.lastSubmitted != "" {
+	if strings.TrimSpace(m.response.Value()) == "" && m.lastSubmitted != "" && m.lastSubmittedRound == m.round {
 		m.response.SetValue(m.lastSubmitted)
 		m.hub.SetDraft(m.id, m.lastSubmitted)
 	}

@@ -151,3 +151,19 @@ func TestRoundState_NewlyFlaggedParticipantIsToldOnce(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
 	assert.Contains(t, visible(m.View()), "Participants (Round 2")
 }
+
+// #74: the answer offered back is for the current round. A participant who
+// answered round 1 and is flagged in round 2 before answering is not handed
+// their round 1 answer as if it were round 2's.
+func TestFlagged_DoesNotOfferAnAnswerFromAnEarlierRound(t *testing.T) {
+	m, _ := statusRig(t)
+	m = sized(m)
+	m = step(m, roundState(1))
+	m = typeRunes(m, "use postgres")
+	m = step(m, tea.KeyMsg{Type: tea.KeyEnter})
+
+	m = step(m, roundState(2, "Agent-alice"))
+
+	assert.Contains(t, visible(m.View()), "asked you to revise")
+	assert.Equal(t, "", m.response.Value())
+}
