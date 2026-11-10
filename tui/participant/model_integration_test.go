@@ -85,22 +85,21 @@ func eventuallyDrawn(t *testing.T, out *syncBuffer, want ...string) {
 	t.Fatalf("never drew %q. Output so far:\n%s", want, out.text())
 }
 
-func startedHub(t *testing.T) hub.Hub {
+// runJoined runs user1's program the way the SSH server starts a session:
+// the model first, then the registration that catches it up.
+func runJoined(t *testing.T) (hub.Hub, *syncBuffer) {
 	t.Helper()
-	h := hub.NewHub()
-	if err := h.Start(); err != nil {
-		t.Fatalf("Failed to start hub: %v", err)
-	}
-	t.Cleanup(func() { h.Stop() })
+	h, _ := serverHub(t)
 	h.SetDisplayName("Agent-user1", "Participant One")
 	h.RegisterParticipant(hub.NewParticipantEvent("host", "Host", hub.StatusIdle, hub.ParticipantEventConnect))
+	out := runProgram(t, NewParticipantModel(h, "Agent-user1", "user1"))
 	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user1", "Participant One", hub.StatusIdle, hub.ParticipantEventConnect))
-	return h
+	return h, out
 }
 
 func TestParticipantModel_ReceivesMessages(t *testing.T) {
-	h := startedHub(t)
-	out := runProgram(t, NewParticipantModel(h, "Agent-user1", "user1"))
+	h, out := runJoined(t)
+	eventuallyDrawn(t, out, "Host") // caught up: the host is in the sidebar
 
 	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeDirective, "Host", "Test directive", 1))
 
@@ -108,8 +107,7 @@ func TestParticipantModel_ReceivesMessages(t *testing.T) {
 }
 
 func TestParticipantModel_ReceivesParticipantEvents(t *testing.T) {
-	h := startedHub(t)
-	out := runProgram(t, NewParticipantModel(h, "Agent-user1", "user1"))
+	h, out := runJoined(t)
 	eventuallyDrawn(t, out, "Participant One")
 
 	h.RegisterParticipant(hub.NewParticipantEvent("Agent-user2", "Participant Two", hub.StatusIdle, hub.ParticipantEventConnect))

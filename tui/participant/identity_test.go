@@ -1,8 +1,8 @@
 package participant
 
 import (
+	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"jakofranko/haive-mind/hub"
@@ -57,30 +57,13 @@ func TestParticipant_SidebarRowMatchesHubIdentity(t *testing.T) {
 
 // #29: when someone else disconnects, a participant's sidebar drops them.
 func TestParticipant_OtherDisconnecting_RemovesThemFromSidebar(t *testing.T) {
-	h := hub.NewHub()
-	if err := h.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer h.Stop()
-
-	m := NewParticipantModel(h, "Agent-bob", "bob")
-
-	pump := func(what string) {
-		res := make(chan tea.Msg, 1)
-		go func() { res <- m.waitForEvent()() }()
-		select {
-		case msg := <-res:
-			updated, _ := m.Update(msg)
-			m = updated.(*ParticipantModel)
-		case <-time.After(2 * time.Second):
-			t.Fatalf("the %s update never arrived", what)
-		}
-	}
+	h, _ := serverHub(t)
+	m := join(t, h, "Agent-bob", "Bob")
 
 	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
-	pump("connect")
+	m = receiveUntil(t, m, shows("Alice"))
 	h.UnregisterParticipant("Agent-alice")
-	pump("disconnect")
+	m = receiveUntil(t, m, func(s string) bool { return !strings.Contains(s, "Alice") })
 
 	for _, p := range m.sidebar.GetParticipants() {
 		if p.ID == "Agent-alice" {

@@ -101,8 +101,12 @@ A single SSH connection from a host or participant to the server. Each session r
 _Avoid_: Connection, meeting, run
 
 **Session client**:
-A session's end of the conversation with the hub. It turns what the hub publishes into typed events for the host or participant TUI, and stops when the session ends.
+A session's end of the conversation with the hub, in both directions. It knows where its session stands in the round: the round, who is flagged, whether it is flagged itself, and its own last response. It gives its TUI events that say what happened, not which message arrived. It sends on the session's behalf, stamping the round and the sender's identity, and it stops when the session ends.
 _Avoid_: Listener, subscriber, connection
+
+**Catch-up**:
+The one event a session's TUI gets once its transcript snapshot has arrived: the earlier conversation, the round, who is flagged, who is connected, its own last response and whether it is being asked to revise. Nothing reaches the TUI before it, whatever order the Round state and the Transcript snapshot arrive in.
+_Avoid_: Sync, replay, Transcript snapshot (that is the message; Catch-up is what the session makes of it)
 
 ### Participant State
 

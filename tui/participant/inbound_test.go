@@ -11,18 +11,20 @@ import (
 	"jakofranko/haive-mind/tui/session"
 )
 
-// drainInbound pulls hub messages out of the model the way its Update loop
-// does (the thin wait command, one event at a time) until nothing arrives for
-// a quiet period, and returns the contents received.
-func drainInbound(m *ParticipantModel) map[string]bool {
-	got := map[string]bool{}
+// drainMessages pulls events out of the model the way its Update loop does
+// (the thin wait command, one event at a time) until nothing arrives for a
+// quiet period, and returns the transcript messages' contents in order.
+func drainMessages(m *ParticipantModel) []string {
+	var got []string
 	wait := 10 * time.Second // generous until the first message; short once they are flowing
 	for {
 		res := make(chan tea.Msg, 1)
 		go func() { res <- m.waitForEvent()() }()
 		select {
 		case msg := <-res:
-			got[msg.(eventMsg).Event.(session.MessageEvent).Message.Content] = true
+			if ev, ok := msg.(eventMsg).Event.(session.MessageEvent); ok {
+				got = append(got, ev.Message.Content)
+			}
 			wait = 500 * time.Millisecond
 		case <-time.After(wait):
 			return got
@@ -33,14 +35,8 @@ func drainInbound(m *ParticipantModel) map[string]bool {
 // G6: a burst of hub messages larger than the model's inbound buffer must
 // all be delivered, not silently dropped.
 func TestParticipantModel_BurstOfMessages_NoneDropped(t *testing.T) {
-	h := hub.NewHub()
-	if err := h.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer h.Stop()
-
-	m := NewParticipantModel(h, "Alice", "alice")
-	m.Init() // subscribe; nothing is draining yet
+	h, _ := serverHub(t)
+	m := join(t, h, "Agent-alice", "Alice") // nothing drains while the burst is sent
 
 	const n = 300
 	ctx := context.Background()
@@ -48,8 +44,7 @@ func TestParticipantModel_BurstOfMessages_NoneDropped(t *testing.T) {
 		h.Send(ctx, hub.NewMessage(hub.MessageTypeSystem, "hub", fmt.Sprintf("msg-%03d", i), 1))
 	}
 
-	got := drainInbound(m)
-	if len(got) != n {
+	if got := drainMessages(m); len(got) != n {
 		t.Errorf("model received %d of %d messages", len(got), n)
 	}
 }
@@ -57,32 +52,23 @@ func TestParticipantModel_BurstOfMessages_NoneDropped(t *testing.T) {
 // G23: messages of different types reach the model in the order they were
 // sent, so the transcript the participant sees is linear.
 func TestParticipantModel_MixedTypes_ArriveInSendOrder(t *testing.T) {
-	h := hub.NewHub()
-	if err := h.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer h.Stop()
-
-	m := NewParticipantModel(h, "Alice", "alice")
-	m.Init()
+	h, _ := serverHub(t)
+	m := join(t, h, "Agent-alice", "Alice")
 
 	const n = 200
 	ctx := context.Background()
-	types := []hub.MessageType{hub.MessageTypeDirective, hub.MessageTypeResponse, hub.MessageTypeSystem, hub.MessageTypeAggregate}
+	types := []hub.MessageType{hub.MessageTypeResponse, hub.MessageTypeSystem, hub.MessageTypeAggregateDraft}
 	for i := 0; i < n; i++ {
 		h.Send(ctx, hub.NewMessage(types[i%len(types)], "x", fmt.Sprintf("%03d", i), 1))
 	}
 
-	for i := 0; i < n; i++ {
-		res := make(chan tea.Msg, 1)
-		go func() { res <- m.waitForEvent()() }()
-		select {
-		case msg := <-res:
-			if got, want := msg.(eventMsg).Event.(session.MessageEvent).Message.Content, fmt.Sprintf("%03d", i); got != want {
-				t.Fatalf("message %d arrived as %s, want %s (out of order)", i, got, want)
-			}
-		case <-time.After(10 * time.Second):
-			t.Fatalf("timed out waiting for message %d", i)
+	got := drainMessages(m)
+	if len(got) != n {
+		t.Fatalf("model received %d of %d messages", len(got), n)
+	}
+	for i, c := range got {
+		if want := fmt.Sprintf("%03d", i); c != want {
+			t.Fatalf("message %d arrived as %s, want %s (out of order)", i, c, want)
 		}
 	}
 }
@@ -90,18 +76,10 @@ func TestParticipantModel_MixedTypes_ArriveInSendOrder(t *testing.T) {
 // G11: the synthesized aggregate draft is shared with everyone, so a
 // participant receives it like any other transcript message.
 func TestParticipantModel_ReceivesAggregateDraft(t *testing.T) {
-	h := hub.NewHub()
-	if err := h.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer h.Stop()
-
-	m := NewParticipantModel(h, "Alice", "alice")
-	m.Init()
+	h, _ := serverHub(t)
+	m := join(t, h, "Agent-alice", "Alice")
 
 	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "draft-text", 1))
 
-	if got := drainInbound(m); !got["draft-text"] {
-		t.Errorf("participant did not receive the aggregate draft; got %v", got)
-	}
+	receiveUntil(t, m, shows("draft-text"))
 }

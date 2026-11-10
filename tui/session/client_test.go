@@ -27,8 +27,13 @@ func startedHub(t *testing.T) hub.Hub {
 	return h
 }
 
+// eventSource is any Session client: something that hands out events.
+type eventSource interface {
+	Next() (session.Event, bool)
+}
+
 // next returns the client's next event, failing the test if none arrives.
-func next(t *testing.T, c *session.Client) session.Event {
+func next(t *testing.T, c eventSource) session.Event {
 	t.Helper()
 	type result struct {
 		ev session.Event

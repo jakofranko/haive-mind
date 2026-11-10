@@ -25,8 +25,13 @@ type MessageEvent struct{ Message hub.Message }
 // A disconnect carries Status hub.StatusDisconnected.
 type ParticipantEvent struct{ Participant *hub.Participant }
 
-// RoundEvent is a change of round.
-type RoundEvent struct{ Round int }
+// RoundEvent says which round it is. From a participant's Session client it
+// also says who is flagged, and comes for both a Round change and a Round
+// state; from the host's it is a Round change only and Flagged is empty.
+type RoundEvent struct {
+	Round   int
+	Flagged []string
+}
 
 // RoundStateEvent is the Coordinator's statement of where things stand: the
 // current round and the flagged Participant ids. It is not a round change.
@@ -99,7 +104,7 @@ func New(h hub.Hub, id string, extra ...hub.MessageType) *Client {
 func (c *Client) receive(msg *hub.Message) error {
 	switch msg.Type {
 	case hub.MessageTypeParticipantEvent:
-		if p := c.participantFor(msg); p != nil {
+		if p := lookupParticipant(c.hub, msg); p != nil {
 			c.inbox.Push(ParticipantEvent{Participant: p})
 		}
 	case hub.MessageTypeRoundChange:
@@ -146,20 +151,6 @@ func (c *Client) firstSight(id string) bool {
 	}
 	c.seen[id] = true
 	return true
-}
-
-func (c *Client) participantFor(msg *hub.Message) *hub.Participant {
-	// The hub has already forgotten a participant who disconnected, so there is
-	// nothing to look up: the event itself says who to remove.
-	if msg.Content == hub.ParticipantEventDisconnect {
-		return &hub.Participant{ID: msg.ID, Status: hub.StatusDisconnected, Event: msg.Content}
-	}
-	for _, p := range c.hub.GetParticipants() {
-		if p.ID == msg.ID {
-			return p
-		}
-	}
-	return nil
 }
 
 // Next returns the next event, blocking until one arrives. Once the client is
