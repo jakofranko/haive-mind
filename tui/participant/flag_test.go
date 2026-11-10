@@ -1,169 +1,132 @@
 package participant
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/session"
 )
 
-func flagUpdate(ids ...string) eventMsg {
-	return eventMsg{session.RoundStateEvent{Round: 1, IDs: ids}}
-}
+const notice = "asked you to revise"
 
-// sized gives the model a screen so View() shows the panes.
-func sized(m *ParticipantModel) *ParticipantModel {
-	return step(m, tea.WindowSizeMsg{Width: 140, Height: 40})
-}
-
-// submitted is a participant who has already sent an answer.
-func submitted(t *testing.T, answer string) (*ParticipantModel, func() hub.ParticipantStatus) {
-	t.Helper()
-	m, status := statusRig(t)
-	m = sized(m)
-	m = typeRunes(m, answer)
-	m = step(m, tea.KeyMsg{Type: tea.KeyEnter})
-	return m, status
+func notices(m *ParticipantModel) int {
+	return strings.Count(visible(m.transcript.View()), notice)
 }
 
 // G12: when the host flags this participant they are told, their last answer
 // comes back for editing, and they are idle again.
 func TestFlagged_GetsNoticeAndTheirLastAnswerBack(t *testing.T) {
-	m, status := submitted(t, "use postgres")
-	assert.Equal(t, hub.StatusSubmitted, status())
+	m, h := submitted(t, "use postgres")
 	assert.Equal(t, "", m.response.Value())
 
-	m = step(m, flagUpdate("Agent-alice"))
+	flag(h, 1, "Agent-alice")
+	m = receiveUntil(t, m, shows(notice))
 
-	assert.Contains(t, visible(m.View()), "asked you to revise")
 	assert.Equal(t, "use postgres", m.response.Value())
-	assert.Equal(t, hub.StatusIdle, status())
+	assert.Equal(t, hub.StatusIdle, statusOf(t, h, "Agent-alice")())
 }
 
 // Text they have already started typing is left alone.
 func TestFlagged_DoesNotOverwriteWhatTheyAreTyping(t *testing.T) {
-	m, _ := submitted(t, "use postgres")
+	m, h := submitted(t, "use postgres")
 	m = typeRunes(m, "on second thought, sqlite")
 
-	m = step(m, flagUpdate("Agent-alice"))
+	flag(h, 1, "Agent-alice")
+	m = receiveUntil(t, m, shows(notice))
 
 	assert.Equal(t, "on second thought, sqlite", m.response.Value())
 }
 
-// Someone else being flagged is not this participant's notice.
-func TestFlagged_OtherParticipantsFlagIsNotMyNotice(t *testing.T) {
-	m, _ := submitted(t, "use postgres")
-
-	m = step(m, flagUpdate("Agent-bob"))
-
-	assert.NotContains(t, visible(m.View()), "asked you to revise")
-	assert.Equal(t, "", m.response.Value())
-}
-
-// The notice appears when they become flagged, not on every announcement.
-func TestFlagged_NoticeIsShownOncePerFlag(t *testing.T) {
-	m, _ := submitted(t, "use postgres")
-
-	m = step(m, flagUpdate("Agent-alice"))
-	m = step(m, flagUpdate("Agent-alice", "Agent-bob"))
-
-	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
-}
-
-// #53: a flagged participant whose new session has never seen the flag is told
-// once when the connect announcement arrives, and a repeat does not tell them again.
-func TestFlagged_ReconnectingSessionIsToldOnce(t *testing.T) {
-	m, _ := statusRig(t)
-	m = sized(m)
-
-	m = step(m, flagUpdate("Agent-alice"))
-	m = step(m, flagUpdate("Agent-alice"))
-
-	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
-}
-
-// Everyone sees who is flagged, and the announcement itself is not chat.
-func TestFlagged_SidebarShowsReviseForFlaggedParticipants(t *testing.T) {
-	h := hub.NewHub()
-	h.SetDisplayName("Agent-alice", "Alice")
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-bob", "Bobby", hub.StatusSubmitted, hub.ParticipantEventConnect))
-	h.RegisterParticipant(hub.NewParticipantEvent("Agent-alice", "Alice", hub.StatusIdle, hub.ParticipantEventConnect))
-	m := sized(NewParticipantModel(h, "Agent-alice", "alice"))
-	m = step(m, initialParticipantsMsg(m.client.Participants()))
+// Everyone sees who is flagged, someone else's flag is not this participant's
+// notice, and the announcement itself is not chat.
+func TestFlagged_SomeoneElse_ShowsReviseButNoNotice(t *testing.T) {
+	m, h := submitted(t, "use postgres")
+	join(t, h, "Agent-bob", "Bob")
+	m = receiveUntil(t, m, shows("Bob"))
 	assert.NotContains(t, visible(m.View()), "revise")
 
-	m = step(m, flagUpdate("Agent-bob"))
-	assert.Contains(t, visible(m.View()), "revise")
+	flag(h, 1, "Agent-bob")
+	m = receiveUntil(t, m, shows("revise"))
+
+	assert.NotContains(t, visible(m.View()), notice)
 	assert.NotContains(t, visible(m.View()), `["Agent-bob"]`)
+	assert.Equal(t, "", m.response.Value())
 
-	m = step(m, flagUpdate())
-	assert.NotContains(t, visible(m.View()), "revise")
+	h.Send(context.Background(), hub.NewUnflag(1, "Agent-bob"))
+	m = receiveUntil(t, m, func(s string) bool { return !strings.Contains(s, "revise") })
 }
 
-func roundState(round int, ids ...string) eventMsg {
-	return eventMsg{session.RoundStateEvent{Round: round, IDs: ids}}
+// The notice appears when they become flagged, not on every Round state.
+func TestFlagged_NoticeIsShownOncePerFlag(t *testing.T) {
+	m, h := submitted(t, "use postgres")
+
+	flag(h, 1, "Agent-alice")
+	m = receiveUntil(t, m, shows(notice))
+	join(t, h, "Agent-bob", "Bob") // its connect repeats the Round state to everyone
+	flag(h, 1, "Agent-bob")
+	m = receiveUntil(t, m, func(s string) bool { return strings.Count(s, "revise") >= 3 }) // two rows, one notice
+
+	assert.Equal(t, 1, notices(m))
 }
 
-// A Round state sets the round (and the sidebar title) but is not a new round:
-// the participant keeps their status and what they are typing.
-func TestRoundState_SetsRoundWithoutResettingStatusOrResponseBox(t *testing.T) {
-	m, status := submitted(t, "use postgres")
+// #53, #70: a participant whose connection drops while flagged is told once in
+// their new session, and gets their answer back.
+func TestFlagged_ReconnectingSessionIsToldOnceWithTheirAnswer(t *testing.T) {
+	first, h := submitted(t, "use postgres")
+	flag(h, 1, "Agent-alice")
+	receiveUntil(t, first, shows(notice))
+	first.Close()
+	h.UnregisterParticipant("Agent-alice")
+
+	m := join(t, h, "Agent-alice", "Alice")
+	m = receiveUntil(t, m, shows(notice))
+	assert.Equal(t, "use postgres", m.response.Value())
+
+	join(t, h, "Agent-bob", "Bob") // its connect repeats the Round state
+	m = receiveUntil(t, m, shows("Bob"))
+	assert.Equal(t, 1, notices(m))
+}
+
+// A Round state is not a new round: a participant who is typing keeps their
+// status and their text.
+func TestRoundState_LeavesStatusAndResponseBoxAlone(t *testing.T) {
+	m, h := submitted(t, "use postgres")
+	status := statusOf(t, h, "Agent-alice")
 	m = typeRunes(m, "draft in progress")
-	assert.Equal(t, hub.StatusTyping, status())
 
-	m = step(m, roundState(3))
+	join(t, h, "Agent-bob", "Bob") // its connect repeats the Round state
+	m = receiveUntil(t, m, shows("Bob"))
 
-	assert.Equal(t, 3, m.round)
-	assert.Contains(t, visible(m.View()), "Participants (Round 3")
 	assert.Equal(t, hub.StatusTyping, status())
 	assert.Equal(t, "draft in progress", m.response.Value())
 }
 
-// A participant who already submitted stays submitted through a Round state.
-func TestRoundState_LeavesSubmittedStatusAlone(t *testing.T) {
-	m, status := submitted(t, "use postgres")
-
-	m = step(m, roundState(1))
-
-	assert.Equal(t, hub.StatusSubmitted, status())
-}
-
-// Hearing the same flag again, as a repeat announcement can cause, does not
-// tell the participant a second time.
-func TestRoundState_RepeatDoesNotRenotifyAFlaggedParticipant(t *testing.T) {
-	m, _ := submitted(t, "use postgres")
-
-	m = step(m, roundState(1, "Agent-alice"))
-	m = step(m, roundState(1, "Agent-alice"))
-
-	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
-}
-
-// A participant who is newly flagged is told once, and the round is set.
-func TestRoundState_NewlyFlaggedParticipantIsToldOnce(t *testing.T) {
-	m, _ := submitted(t, "use postgres")
-
-	m = step(m, roundState(2, "Agent-alice"))
-
-	assert.Equal(t, 1, strings.Count(visible(m.transcript.View()), "asked you to revise"))
-	assert.Contains(t, visible(m.View()), "Participants (Round 2")
-}
-
 // #74: the answer offered back is for the current round. A participant who
-// answered round 1 and is flagged in round 2 before answering is not handed
-// their round 1 answer as if it were round 2's.
+// answered round 1 and is flagged in round 2 before answering is told, but
+// not handed their round 1 answer.
 func TestFlagged_DoesNotOfferAnAnswerFromAnEarlierRound(t *testing.T) {
-	m, _ := statusRig(t)
-	m = sized(m)
-	m = step(m, roundState(1))
-	m = typeRunes(m, "use postgres")
+	m, h := submitted(t, "use postgres")
+
+	h.StartRound(1)
+	m = receiveUntil(t, m, shows("Participants (Round 2"))
+	flag(h, 2, "Agent-alice")
+	m = receiveUntil(t, m, shows(notice))
+
+	assert.Equal(t, 1, notices(m))
+	assert.Equal(t, "", m.response.Value())
+}
+
+// Submitting takes the box's text; a blank box sends nothing.
+func TestSubmit_BlankBoxSendsNothing(t *testing.T) {
+	h, _ := serverHub(t)
+	m := join(t, h, "Agent-alice", "Alice")
+
+	m = typeRunes(m, "   ")
 	m = step(m, tea.KeyMsg{Type: tea.KeyEnter})
 
-	m = step(m, roundState(2, "Agent-alice"))
-
-	assert.Contains(t, visible(m.View()), "asked you to revise")
-	assert.Equal(t, "", m.response.Value())
+	assert.Equal(t, "   ", m.response.Value())
+	assert.NotEqual(t, hub.StatusSubmitted, statusOf(t, h, "Agent-alice")())
 }

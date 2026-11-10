@@ -1,12 +1,12 @@
 package participant
 
 import (
+	"context"
 	"testing"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/session"
 )
 
 func TestParticipantModel_Init(t *testing.T) {
@@ -16,8 +16,6 @@ func TestParticipantModel_Init(t *testing.T) {
 
 	assert.NotNil(t, model)
 	assert.Equal(t, paneTranscript, model.activePane)
-	assert.Equal(t, 1, model.round)
-	assert.Equal(t, "Agent-1", model.displayName)
 	assert.Len(t, model.sidebar.GetParticipants(), 1)
 	assert.Equal(t, "Agent-1", model.sidebar.GetParticipants()[0].ID)
 }
@@ -121,15 +119,11 @@ func TestParticipantModel_AddMessage(t *testing.T) {
 }
 
 func TestParticipantModel_Update_DirectiveMessage(t *testing.T) {
-	hubChans := hub.NewHub()
-	hubChans.SetDisplayName("Agent-1", "Agent-1")
-	model := NewParticipantModel(hubChans, "Agent-1", "user1")
+	h, _ := serverHub(t)
+	model := join(t, h, "Agent-1", "Agent-1")
 
-	model.transcript.SetSize(80, 20)
-
-	msg := hub.NewMessage(hub.MessageTypeDirective, "host", "Test directive", 1)
-	updatedModel, _ := model.Update(eventMsg{session.MessageEvent{Message: *msg}})
-	model = updatedModel.(*ParticipantModel)
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeDirective, "host", "Test directive", 1))
+	model = receiveUntil(t, model, shows("Test directive"))
 
 	content := visible(model.transcript.View())
 	assert.Contains(t, content, "host")
@@ -195,7 +189,6 @@ func TestParticipantModel_NamePrompt_Flow(t *testing.T) {
 
 	assert.False(t, model.namePromptActive)
 	assert.Equal(t, paneTranscript, model.activePane)
-	assert.Equal(t, "John Doe", model.displayName)
 	assert.Equal(t, "Agent-1", model.sidebar.GetParticipants()[0].ID)
 	assert.Equal(t, "John Doe", model.sidebar.GetParticipants()[0].DisplayName)
 	assert.Equal(t, "John Doe", hubChans.GetDisplayName("Agent-1"))

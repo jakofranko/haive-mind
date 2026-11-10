@@ -1,7 +1,6 @@
 package participant
 
 import (
-	"context"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -23,17 +22,10 @@ const (
 )
 
 type ParticipantModel struct {
-	hub                hub.Hub
-	width              int
-	height             int
-	activePane         int
-	round              int
-	id                 string // stable hub identity (set by the SSH server); never changes
-	displayName        string // what others see; chosen by the person
-	lastSubmitted      string // what they last sent, offered back when the host asks for a revision
-	lastSubmittedRound int    // the round lastSubmitted was sent in; it is offered back only in that round
-	flaggedSelf        bool   // the host currently has this participant flagged
-	status             hub.ParticipantStatus
+	width      int
+	height     int
+	activePane int
+	id         string // stable hub identity (set by the SSH server); never changes
 
 	transcript transcript.Model
 	sidebar    sidebar.Model
@@ -42,8 +34,9 @@ type ParticipantModel struct {
 
 	namePromptActive bool
 
-	// The session's conversation with the hub.
-	client *session.Client
+	// The session's conversation with the hub: it knows where this
+	// participant stands in the round and sends on their behalf.
+	client *session.Participant
 }
 
 func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantModel {
@@ -55,61 +48,44 @@ func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantM
 	namePrompt.Width = 40
 
 	m := &ParticipantModel{
-		hub:              hubChans,
-		activePane:       paneTranscript,
-		round:            1,
-		id:               id,
-		status:           hub.StatusIdle,
-		displayName:      id,
-		transcript:       transcript.New(),
-		sidebar:          sidebar.New(id),
-		response:         response.New(),
-		namePrompt:       namePrompt,
-		namePromptActive: false,
-		client:           session.New(hubChans, id),
+		activePane: paneTranscript,
+		id:         id,
+		transcript: transcript.New(),
+		sidebar:    sidebar.New(id),
+		response:   response.New(),
+		namePrompt: namePrompt,
+		client:     session.NewParticipant(hubChans, id),
 	}
 
 	// Pick up text a previous session left unsent.
-	if draft := hubChans.GetDraft(id); draft != "" {
+	if draft := m.client.UnsentText(); draft != "" {
 		m.response.SetDraft(draft)
 	}
 
-	m.sidebar.SetParticipants([]hub.Participant{
-		{ID: m.id, DisplayName: id, Status: hub.StatusIdle},
-	})
-
-	// Check if we have a stored display name
-	if displayName := hubChans.GetDisplayName(m.id); displayName != "" {
-		m.displayName = displayName
-		m.sidebar.SetParticipants([]hub.Participant{
-			{ID: m.id, DisplayName: displayName, Status: hub.StatusIdle},
-		})
-	} else {
-		// First time - activate name prompt
+	// Until Catch-up brings the roster, the sidebar shows this participant.
+	displayName := m.client.DisplayName()
+	if displayName == "" {
+		displayName = id
 		m.activePane = paneNamePrompt
 		m.namePromptActive = true
 	}
+	m.sidebar.SetParticipants([]hub.Participant{
+		{ID: m.id, DisplayName: displayName, Status: hub.StatusIdle},
+	})
 
 	return m
 }
 
 func (m *ParticipantModel) Init() tea.Cmd {
 	if m.namePromptActive {
-		return tea.Batch(textinput.Blink, m.waitForEvent(), m.initialParticipants())
+		return tea.Batch(textinput.Blink, m.waitForEvent())
 	}
 	return tea.Batch(
 		m.transcript.Init(),
 		m.sidebar.Init(),
 		m.response.Init(),
 		m.waitForEvent(),
-		m.initialParticipants(),
 	)
-}
-
-type initialParticipantsMsg []hub.Participant
-
-func (m *ParticipantModel) initialParticipants() tea.Cmd {
-	return func() tea.Msg { return initialParticipantsMsg(m.client.Participants()) }
 }
 
 // eventMsg carries one event from the session client into Update.
@@ -144,10 +120,6 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		m.reduce(msg.Event)
 		return m, m.waitForEvent()
-
-	case initialParticipantsMsg:
-		m.sidebar.SetParticipants(msg)
-		return m, nil
 	}
 
 	cmds = append(cmds, m.forwardToFocused(msg)...)
@@ -157,19 +129,13 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // reduce applies one event from the session client to the panes.
 func (m *ParticipantModel) reduce(ev session.Event) {
 	switch ev := ev.(type) {
+	case session.CatchUpEvent:
+		m.transcript.PrependMessages(ev.Messages)
+		m.sidebar.SetParticipants(ev.Participants)
+		m.sidebar.SetRound(ev.Round)
+		m.sidebar.SetFlagged(ev.Flagged)
 	case session.MessageEvent:
 		m.transcript.AddMessage(ev.Message)
-	case session.SnapshotEvent:
-		m.transcript.PrependMessages(ev.Messages)
-		if ev.LastSubmission != nil {
-			m.lastSubmitted = ev.LastSubmission.Content
-			m.lastSubmittedRound = ev.LastSubmission.Round
-			// Round state arrives before the snapshot, so a participant who
-			// reconnects already flagged learns of their last answer only now.
-			if m.flaggedSelf {
-				m.restoreLastSubmission()
-			}
-		}
 	case session.ParticipantEvent:
 		if ev.Participant.Status == hub.StatusDisconnected {
 			m.sidebar.RemoveParticipant(ev.Participant.ID)
@@ -177,13 +143,14 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 			m.sidebar.UpdateParticipant(*ev.Participant)
 		}
 	case session.RoundEvent:
-		m.round = ev.Round
-		m.sidebar.SetRound(m.round)
-		m.setStatus(hub.StatusIdle)
-	case session.RoundStateEvent:
-		m.round = ev.Round
-		m.sidebar.SetRound(m.round)
-		m.applyFlags(ev.IDs)
+		m.sidebar.SetRound(ev.Round)
+		m.sidebar.SetFlagged(ev.Flagged)
+	case session.RevisionEvent:
+		m.transcript.AddSystemMessage("The host asked you to revise your response.")
+		// Their last answer comes back to edit, unless they are already typing.
+		if ev.LastAnswer != "" && strings.TrimSpace(m.response.Value()) == "" {
+			m.response.SetValue(ev.LastAnswer)
+		}
 	}
 }
 
@@ -256,14 +223,11 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if keyStr == "enter" {
 			name := strings.TrimSpace(m.namePrompt.Value())
 			if name != "" {
-				m.displayName = name
-				m.hub.SetDisplayName(m.id, name)
+				m.client.Rename(name)
 				m.namePromptActive = false
 				m.activePane = paneTranscript
 				m.namePrompt.Blur()
-				m.sidebar.SetParticipants([]hub.Participant{
-					{ID: m.id, DisplayName: name, Status: hub.StatusIdle},
-				})
+				m.sidebar.UpdateParticipant(hub.Participant{ID: m.id, DisplayName: name, Status: hub.StatusIdle})
 				return m, tea.Batch(
 					m.transcript.Init(),
 					m.sidebar.Init(),
@@ -288,7 +252,7 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case paneTranscript, paneSidebar:
 		cmds := m.forwardToFocused(msg)
 		if m.activePane == paneResponse {
-			m.syncTypingStatus()
+			m.client.Typed(m.response.Value())
 		}
 		return m, tea.Batch(cmds...)
 	}
@@ -297,43 +261,11 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *ParticipantModel) handleResponseSubmit() (tea.Model, tea.Cmd) {
-	content := strings.TrimSpace(m.response.Value())
-	if content == "" {
+	if !m.client.Submit(m.response.Value()) {
 		return m, nil
 	}
-
-	msg := hub.NewMessage(hub.MessageTypeResponse, m.displayName, content, m.round)
-	msg.FromID = m.id
-	m.lastSubmitted = content
-	m.lastSubmittedRound = msg.Round
-	m.hub.Send(context.Background(), msg)
-	m.setStatus(hub.StatusSubmitted)
-	m.hub.SetDraft(m.id, "")
-
 	m.response.Reset()
 	return m, m.response.Focus()
-}
-
-// setStatus tells the hub what this participant is doing, once per change.
-func (m *ParticipantModel) setStatus(status hub.ParticipantStatus) {
-	if m.status == status {
-		return
-	}
-	m.status = status
-	m.hub.UpdateParticipantStatus(m.id, status)
-}
-
-// syncTypingStatus reports typing while the response box has text, and idle
-// again if it is emptied. A submitted response stays submitted until the box
-// has text again or the round changes.
-func (m *ParticipantModel) syncTypingStatus() {
-	m.hub.SetDraft(m.id, m.response.Value()) // so a reconnect can restore it
-	switch {
-	case strings.TrimSpace(m.response.Value()) != "":
-		m.setStatus(hub.StatusTyping)
-	case m.status == hub.StatusTyping:
-		m.setStatus(hub.StatusIdle)
-	}
 }
 
 func (m *ParticipantModel) updateActiveStates() {
@@ -388,40 +320,4 @@ func (m *ParticipantModel) namePromptView() string {
 // ends so the hub stops delivering to a model nobody is reading.
 func (m *ParticipantModel) Close() {
 	m.client.Close()
-}
-
-func (m *ParticipantModel) SetDisplayName(name string) {
-	m.displayName = name
-}
-
-// applyFlags handles the coordinator's announcement of who the host has asked
-// to revise. When this participant newly becomes flagged they are told, their
-// last answer comes back for editing (unless they are already typing), and
-// they are idle again.
-func (m *ParticipantModel) applyFlags(ids []string) {
-	m.sidebar.SetFlagged(ids)
-
-	flagged := false
-	for _, id := range ids {
-		if id == m.id {
-			flagged = true
-		}
-	}
-	newlyFlagged := flagged && !m.flaggedSelf
-	m.flaggedSelf = flagged
-	if !newlyFlagged {
-		return
-	}
-	m.transcript.AddSystemMessage("The host asked you to revise your response.")
-	m.restoreLastSubmission()
-	m.setStatus(hub.StatusIdle)
-}
-
-// restoreLastSubmission puts the last answer back for editing, unless the
-// participant is already typing or the answer is from an earlier round.
-func (m *ParticipantModel) restoreLastSubmission() {
-	if strings.TrimSpace(m.response.Value()) == "" && m.lastSubmitted != "" && m.lastSubmittedRound == m.round {
-		m.response.SetValue(m.lastSubmitted)
-		m.hub.SetDraft(m.id, m.lastSubmitted)
-	}
 }

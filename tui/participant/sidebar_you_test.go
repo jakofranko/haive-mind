@@ -28,14 +28,14 @@ func youRows(t *testing.T, m *ParticipantModel) []string {
 
 func sidebarModel(t *testing.T, id string, people map[string]string) *ParticipantModel {
 	t.Helper()
-	h := hub.NewHub()
+	h, _ := serverHub(t)
 	for pid, name := range people {
-		h.SetDisplayName(pid, name)
-		h.RegisterParticipant(hub.NewParticipantEvent(pid, name, hub.StatusIdle, hub.ParticipantEventConnect))
+		if pid != id {
+			h.SetDisplayName(pid, name)
+			h.RegisterParticipant(hub.NewParticipantEvent(pid, name, hub.StatusIdle, hub.ParticipantEventConnect))
+		}
 	}
-	m := NewParticipantModel(h, id, "ssh-user")
-	m.Update(m.initialParticipants()())
-	return m
+	return join(t, h, id, people[id])
 }
 
 // The sidebar knows who "you" are by participant id. Two people who chose the
