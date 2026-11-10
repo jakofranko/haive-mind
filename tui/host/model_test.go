@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"jakofranko/haive-mind/coordinator"
 	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/session"
 )
 
 func TestAppModel_Init(t *testing.T) {
@@ -19,8 +18,7 @@ func TestAppModel_Init(t *testing.T) {
 
 	assert.NotNil(t, model)
 	assert.Equal(t, paneTranscript, model.activePane)
-	assert.Equal(t, 1, model.round)
-	assert.Equal(t, "TestHost", model.displayName)
+	assert.Equal(t, "TestHost", model.client.DisplayName())
 	assert.Len(t, model.participants.GetParticipants(), 0)
 }
 
@@ -239,14 +237,12 @@ func TestAppModel_NamePrompt_Flow(t *testing.T) {
 
 	assert.False(t, model.namePromptActive)
 	assert.Equal(t, paneTranscript, model.activePane)
-	assert.Equal(t, "John Doe", model.displayName)
 	assert.Equal(t, "John Doe", hubChans.GetDisplayName(hub.HostID))
 }
 
 func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
-	hubChans := hub.NewHub()
-	hubChans.SetDisplayName(hub.HostID, "TestHost")
-	model := NewAppModel(hubChans)
+	h, _ := serverHub(t)
+	model := joinHost(t, h)
 
 	model.activePane = paneButtons
 	model.buttons.SetButtonIndex(2) // New Round
@@ -254,12 +250,9 @@ func TestAppModel_HandleButtonPress_NewRound(t *testing.T) {
 	model = updatedModel.(*AppModel)
 
 	// The coordinator owns the round: pressing the button only asks for a new
-	// one, and the host adopts it when the announcement arrives.
-	assert.Equal(t, 1, model.round)
-
-	updatedModel, _ = model.Update(eventMsg{session.RoundEvent{Round: 2}})
-	model = updatedModel.(*AppModel)
-	assert.Equal(t, 2, model.round)
+	// one, and the host shows it when the announcement arrives.
+	assert.Contains(t, visible(model.View()), "Participants (Round 1")
+	receiveUntil(t, model, shows("Participants (Round 2"))
 }
 
 // Pressing New Round twice before the announcement arrives starts one round:

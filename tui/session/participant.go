@@ -131,6 +131,8 @@ func (p *Participant) flagsSet() []Event {
 	return []Event{RevisionEvent{LastAnswer: answer}}
 }
 
+func (p *Participant) event(msg *hub.Message) Event { return transcriptEntry(msg) }
+
 func (p *Participant) roundChanged() {
 	p.wasFlagged = false
 	p.setStatus(hub.StatusIdle)
