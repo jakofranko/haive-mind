@@ -34,25 +34,11 @@ func New(h hub.Hub) *Coordinator {
 	}
 }
 
-// transcriptTypes are the message types recorded in the transcript.
-var transcriptTypes = []hub.MessageType{
-	hub.MessageTypeDirective,
-	hub.MessageTypeResponse,
-	hub.MessageTypeAgentReply,
-	hub.MessageTypeSystem,
-	hub.MessageTypeAggregate,
-	hub.MessageTypeAggregateDraft,
-	hub.MessageTypeNewRound,
-	hub.MessageTypeRoundChange,
-	hub.MessageTypeExport,
-	hub.MessageTypeExportComplete,
-}
-
 // Start subscribes the coordinator to the hub.
 func (c *Coordinator) Start(ctx context.Context) error {
 	// One subscription for every recorded type, so the transcript keeps the
 	// order messages were sent in.
-	if _, err := c.hub.SubscribeTypes(ctx, transcriptTypes, c.record); err != nil {
+	if _, err := c.hub.SubscribeTypes(ctx, hub.RecordedTypes(), c.record); err != nil {
 		return err
 	}
 	for _, s := range []struct {

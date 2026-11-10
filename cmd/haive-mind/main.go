@@ -61,15 +61,7 @@ func main() {
 	startedAt := time.Now()
 
 	if *debug {
-		for _, msgType := range []hub.MessageType{
-			hub.MessageTypeDirective,
-			hub.MessageTypeResponse,
-			hub.MessageTypeAgentReply,
-			hub.MessageTypeSystem,
-			hub.MessageTypeAggregate,
-			hub.MessageTypeNewRound,
-			hub.MessageTypeRoundChange,
-		} {
+		for _, msgType := range hub.RecordedTypes() {
 			hubChans.Subscribe(ctx, msgType, func(msg *hub.Message) error {
 				slog.Debug("hub event", "type", msg.Type, "from", msg.From, "content", msg.Content, "round", msg.Round)
 				return nil

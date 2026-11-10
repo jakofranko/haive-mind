@@ -42,6 +42,44 @@ const (
 	MessageTypeTranscriptSnapshot MessageType = "transcript_snapshot"
 )
 
+// shownTypes are the message types a session shows as transcript entries.
+var shownTypes = []MessageType{
+	MessageTypeDirective,
+	MessageTypeResponse,
+	MessageTypeAgentReply,
+	MessageTypeSystem,
+	MessageTypeAggregate,
+	MessageTypeAggregateDraft,
+}
+
+// recordedTypes are the message types the coordinator keeps in the transcript:
+// everything shown, plus the round and export events the export file needs.
+var recordedTypes = append(append([]MessageType{}, shownTypes...),
+	MessageTypeNewRound,
+	MessageTypeRoundChange,
+	MessageTypeExport,
+	MessageTypeExportComplete,
+)
+
+// ShownTypes returns the message types a session shows as transcript entries,
+// whether they arrive live or in a transcript snapshot.
+func ShownTypes() []MessageType { return append([]MessageType{}, shownTypes...) }
+
+// RecordedTypes returns the message types recorded in the transcript. Every
+// shown type is recorded; not every recorded type is shown.
+func RecordedTypes() []MessageType { return append([]MessageType{}, recordedTypes...) }
+
+// Shown reports whether a session shows a message of this type as a
+// transcript entry.
+func (t MessageType) Shown() bool {
+	for _, s := range shownTypes {
+		if s == t {
+			return true
+		}
+	}
+	return false
+}
+
 type Message struct {
 	ID   string      `json:"id"`
 	Type MessageType `json:"type"`
