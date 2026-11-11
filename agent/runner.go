@@ -18,6 +18,9 @@ type Runner interface {
 
 const defaultAgentTimeout = 120 * time.Second
 
+// outputWaitDelay is how long Run still waits for output once opencode is killed.
+const outputWaitDelay = time.Second
+
 type defaultRunner struct {
 	timeout time.Duration
 }
@@ -36,6 +39,11 @@ func (r *defaultRunner) Run(ctx context.Context, prompt string) (string, error) 
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, "opencode", "run", prompt)
+	// opencode may run as a wrapper around a child (npm's opencode.cmd starts
+	// opencode.exe), so a timeout or cancel kills the whole tree; and Run stops
+	// waiting for output soon after, should anything still hold stdout open.
+	killTreeOnCancel(cmd)
+	cmd.WaitDelay = outputWaitDelay
 	output, err := cmd.Output() // stdout only: stderr is diagnostics, not the answer
 	if err != nil {
 		if cmdCtx.Err() == context.DeadlineExceeded {
