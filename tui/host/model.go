@@ -124,14 +124,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.layout()
-		cmds = append(cmds, m.forwardToChildren(msg)...)
-		updatedToast, cmd := m.toast.Update(msg)
-		m.toast = updatedToast.(toast.Model)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		return m, tea.Batch(cmds...)
+		m.layout() // sizes every pane; they need no WindowSizeMsg of their own
+		return m, nil
 
 	case tea.KeyMsg:
 		if m.toast.IsVisible() {
@@ -186,41 +180,6 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 		m.transcript.AddSystemMessage("Exported to " + ev.Path)
 	}
 	return nil
-}
-
-func (m *AppModel) forwardToChildren(msg tea.Msg) []tea.Cmd {
-	var cmds []tea.Cmd
-	if model, cmd := m.transcript.Update(msg); cmd != nil || true {
-		m.transcript = model.(transcript.Model)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	if model, cmd := m.participants.Update(msg); cmd != nil || true {
-		m.participants = model.(participants.Model)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	if model, cmd := m.directive.Update(msg); cmd != nil || true {
-		m.directive = model.(directive.Model)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	if model, cmd := m.buttons.Update(msg); cmd != nil || true {
-		m.buttons = model.(buttons.Model)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	if model, cmd := m.toast.Update(msg); cmd != nil || true {
-		m.toast = model.(toast.Model)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	return cmds
 }
 
 func (m *AppModel) forwardToFocused(msg tea.Msg) []tea.Cmd {
