@@ -54,11 +54,31 @@ func main() {
 	// The coordinator owns the transcript, rounds and response tracking. The
 	// hub owns agent invocation, so nothing here calls the agent.
 	coord := coordinator.New(hubChans)
+	startedAt := time.Now()
+	transcriptOf := func(messages []*hub.Message) *Transcript {
+		return &Transcript{
+			Messages:     messages,
+			Participants: hubChans.GetParticipants(),
+			StartedAt:    startedAt,
+			EndedAt:      time.Now(),
+		}
+	}
+	snapshot := func() *Transcript { return transcriptOf(coord.Transcript()) }
+	// The Coordinator handles export requests in order with everything else and
+	// hands the transcript as it stood to this writer. With no data directory
+	// there is no writer, and an export does nothing.
+	if *dataDir != "" {
+		coord.SetExportWriter(func(messages []*hub.Message, name string) (string, error) {
+			if err := saveTranscript(transcriptOf(messages), *dataDir, name); err != nil {
+				return "", err
+			}
+			return filepath.Join(*dataDir, name), nil
+		})
+	}
 	if err := coord.Start(ctx); err != nil {
 		slog.Error("Failed to start coordinator", "error", err)
 		os.Exit(1)
 	}
-	startedAt := time.Now()
 
 	if *debug {
 		for _, msgType := range hub.RecordedTypes() {
@@ -68,29 +88,6 @@ func main() {
 			})
 		}
 	}
-
-	snapshot := func() *Transcript {
-		return &Transcript{
-			Messages:     coord.Transcript(),
-			Participants: hubChans.GetParticipants(),
-			StartedAt:    startedAt,
-			EndedAt:      time.Now(),
-		}
-	}
-
-	// Handle export requests
-	hubChans.Subscribe(ctx, hub.MessageTypeExport, func(msg *hub.Message) error {
-		if *dataDir == "" {
-			return nil
-		}
-		fullPath := filepath.Join(*dataDir, msg.Content)
-		if err := saveTranscript(snapshot(), *dataDir, msg.Content); err != nil {
-			slog.Error("Failed to export transcript", "error", err)
-			return nil
-		}
-		hubChans.Send(ctx, hub.NewMessage(hub.MessageTypeExportComplete, "hub", fullPath, 0))
-		return nil
-	})
 
 	// Start the hub
 	if err := hubChans.Start(); err != nil {
