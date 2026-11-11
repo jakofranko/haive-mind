@@ -118,8 +118,6 @@ func (m *AppModel) waitForEvent() tea.Cmd {
 }
 
 func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -143,12 +141,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if updated, cmd := m.toast.Update(msg); true {
-		m.toast = updated.(toast.Model)
-		cmds = append(cmds, cmd)
-	}
-	cmds = append(cmds, m.forwardToFocused(msg)...)
-	return m, tea.Batch(cmds...)
+	updatedToast, toastCmd := m.toast.Update(msg)
+	m.toast = updatedToast.(toast.Model)
+	return m, tea.Batch(toastCmd, m.forwardToFocused(msg))
 }
 
 // reduce applies one event from the session client to the panes, and returns
@@ -182,39 +177,26 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 	return nil
 }
 
-func (m *AppModel) forwardToFocused(msg tea.Msg) []tea.Cmd {
-	var cmds []tea.Cmd
+// forwardToFocused hands msg to the focused pane and keeps its updated model,
+// whether or not it returns a command: a viewport scrolls without one.
+func (m *AppModel) forwardToFocused(msg tea.Msg) tea.Cmd {
+	var model tea.Model
+	var cmd tea.Cmd
 	switch m.activePane {
 	case paneTranscript:
-		if model, cmd := m.transcript.Update(msg); cmd != nil || true {
-			m.transcript = model.(transcript.Model)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
+		model, cmd = m.transcript.Update(msg)
+		m.transcript = model.(transcript.Model)
 	case paneDirective:
-		if model, cmd := m.directive.Update(msg); cmd != nil || true {
-			m.directive = model.(directive.Model)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
+		model, cmd = m.directive.Update(msg)
+		m.directive = model.(directive.Model)
 	case paneParticipants:
-		if model, cmd := m.participants.Update(msg); cmd != nil || true {
-			m.participants = model.(participants.Model)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
+		model, cmd = m.participants.Update(msg)
+		m.participants = model.(participants.Model)
 	case paneButtons:
-		if model, cmd := m.buttons.Update(msg); cmd != nil || true {
-			m.buttons = model.(buttons.Model)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
+		model, cmd = m.buttons.Update(msg)
+		m.buttons = model.(buttons.Model)
 	}
-	return cmds
+	return cmd
 }
 
 func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -275,46 +257,16 @@ func (m *AppModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if keyStr == "enter" && !isCtrlPressed(msg) {
 			return m.handleDirectiveSend()
 		}
-		if model, cmd := m.directive.Update(msg); true {
-			m.directive = model.(directive.Model)
-			if cmd != nil {
-				return m, cmd
-			}
-		}
-		return m, nil
-
 	case paneButtons:
 		if keyStr == "enter" {
 			return m.handleButtonPress()
 		}
-		if model, cmd := m.buttons.Update(msg); true {
-			m.buttons = model.(buttons.Model)
-			if cmd != nil {
-				return m, cmd
-			}
-		}
-		return m, nil
-
-	case paneTranscript:
-		if model, cmd := m.transcript.Update(msg); true {
-			m.transcript = model.(transcript.Model)
-			if cmd != nil {
-				return m, cmd
-			}
-		}
-		return m, nil
-
 	case paneParticipants:
 		if keyStr == "c" {
 			return m.toggleFlag()
 		}
-		if model, _ := m.participants.Update(msg); true {
-			m.participants = model.(participants.Model)
-		}
-		return m, nil
 	}
-
-	return m, nil
+	return m, m.forwardToFocused(msg)
 }
 
 func (m *AppModel) updateActiveStates() {
