@@ -12,7 +12,7 @@ import (
 // Message bodies are rendered as Markdown, and the header shows the sender's
 // name plainly (not wrapped in literal asterisks).
 func TestTranscript_RendersMarkdownBodyAndPlainHeader(t *testing.T) {
-	m := New()
+	m := New("welcome")
 	m.SetSize(80, 24)
 	m.AddMessage(hub.Message{From: "Alice", Content: "- fast\n- safe", Timestamp: time.Now(), Round: 1})
 
@@ -30,7 +30,7 @@ func TestTranscript_RendersMarkdownBodyAndPlainHeader(t *testing.T) {
 
 // The welcome text and the first message do not run together on one line.
 func TestTranscript_FirstMessageStartsOnItsOwnLine(t *testing.T) {
-	m := New()
+	m := New("welcome")
 	m.SetSize(80, 24)
 	m.AddMessage(hub.Message{From: "Alice", Content: "hi", Timestamp: time.Now(), Round: 1})
 
@@ -44,7 +44,7 @@ func TestTranscript_FirstMessageStartsOnItsOwnLine(t *testing.T) {
 // Emphasis in a message is rendered, not shown as raw Markdown markers. This
 // must not depend on whether the server itself is attached to a terminal.
 func TestTranscript_RendersEmphasisInTheBody(t *testing.T) {
-	m := New()
+	m := New("welcome")
 	m.SetSize(80, 24)
 	m.AddMessage(hub.Message{From: "Alice", Content: "use **Postgres** here", Timestamp: time.Now(), Round: 1})
 

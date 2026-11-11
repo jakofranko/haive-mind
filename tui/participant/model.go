@@ -9,8 +9,8 @@ import (
 	"jakofranko/haive-mind/hub"
 	"jakofranko/haive-mind/tui/participant/response"
 	"jakofranko/haive-mind/tui/participant/sidebar"
-	"jakofranko/haive-mind/tui/participant/transcript"
 	"jakofranko/haive-mind/tui/session"
+	"jakofranko/haive-mind/tui/transcript"
 )
 
 const (
@@ -50,7 +50,7 @@ func NewParticipantModel(hubChans hub.Hub, id, sshUsername string) *ParticipantM
 	m := &ParticipantModel{
 		activePane: paneTranscript,
 		id:         id,
-		transcript: transcript.New(),
+		transcript: transcript.New("Welcome to Haive Mind Participant TUI\nWaiting for messages..."),
 		sidebar:    sidebar.New(id),
 		response:   response.New(),
 		namePrompt: namePrompt,

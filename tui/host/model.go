@@ -12,8 +12,8 @@ import (
 	"jakofranko/haive-mind/tui/host/directive"
 	"jakofranko/haive-mind/tui/host/participants"
 	"jakofranko/haive-mind/tui/host/toast"
-	"jakofranko/haive-mind/tui/host/transcript"
 	"jakofranko/haive-mind/tui/session"
+	"jakofranko/haive-mind/tui/transcript"
 )
 
 const (
@@ -61,7 +61,7 @@ func NewAppModel(hubChans hub.Hub) *AppModel {
 
 	m := &AppModel{
 		activePane:   paneTranscript,
-		transcript:   transcript.New(),
+		transcript:   transcript.New("Welcome to Haive Mind Host TUI\nPress Tab to navigate panes"),
 		participants: participants.New(),
 		directive:    directive.New(),
 		buttons:      buttons.New(),
