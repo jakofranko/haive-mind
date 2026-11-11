@@ -74,12 +74,17 @@ func TestDirectiveModel_View_Active(t *testing.T) {
 	assert.Contains(t, view, "Directive")
 }
 
-func TestDirectiveModel_Update_WindowSize(t *testing.T) {
+// The host's layout() sizes the pane through SetSize. A window size that
+// reaches Update is the whole window, not the pane's column, so the pane
+// draws exactly as it did before the message.
+func TestDirectiveModel_KeepsItsSizeWhenAWindowSizeReachesIt(t *testing.T) {
 	m := New()
-	updatedModel, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	m = updatedModel.(Model)
-	assert.Equal(t, 100, m.width)
-	assert.Equal(t, 40, m.height)
+	m.SetSize(40, 10)
+	before := m.View()
+
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
+
+	assert.Equal(t, before, updated.(Model).View(), "a window size resized the pane")
 }
 
 func TestDirectiveModel_Update_KeyMsg(t *testing.T) {
