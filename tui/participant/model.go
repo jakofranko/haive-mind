@@ -104,15 +104,12 @@ func (m *ParticipantModel) waitForEvent() tea.Cmd {
 }
 
 func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.layout()
-		cmds = append(cmds, m.forwardToChildren(msg)...)
-		return m, tea.Batch(cmds...)
+		m.layout() // sizes every pane; they need no WindowSizeMsg of their own
+		return m, nil
 
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
@@ -122,8 +119,7 @@ func (m *ParticipantModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.waitForEvent()
 	}
 
-	cmds = append(cmds, m.forwardToFocused(msg)...)
-	return m, tea.Batch(cmds...)
+	return m, m.forwardToFocused(msg)
 }
 
 // reduce applies one event from the session client to the panes.
@@ -154,44 +150,23 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 	}
 }
 
-func (m *ParticipantModel) forwardToChildren(msg tea.Msg) []tea.Cmd {
-	var cmds []tea.Cmd
-
-	if model, cmd := m.transcript.Update(msg); cmd != nil {
-		m.transcript = model.(transcript.Model)
-		cmds = append(cmds, cmd)
-	}
-	if model, cmd := m.sidebar.Update(msg); cmd != nil {
-		m.sidebar = model.(sidebar.Model)
-		cmds = append(cmds, cmd)
-	}
-	if model, cmd := m.response.Update(msg); cmd != nil {
-		m.response = model.(response.Model)
-		cmds = append(cmds, cmd)
-	}
-	return cmds
-}
-
-func (m *ParticipantModel) forwardToFocused(msg tea.Msg) []tea.Cmd {
-	var cmds []tea.Cmd
+// forwardToFocused hands msg to the focused pane and keeps its updated model,
+// whether or not it returns a command: a viewport scrolls without one.
+func (m *ParticipantModel) forwardToFocused(msg tea.Msg) tea.Cmd {
+	var model tea.Model
+	var cmd tea.Cmd
 	switch m.activePane {
 	case paneTranscript:
-		if model, cmd := m.transcript.Update(msg); cmd != nil {
-			m.transcript = model.(transcript.Model)
-			cmds = append(cmds, cmd)
-		}
+		model, cmd = m.transcript.Update(msg)
+		m.transcript = model.(transcript.Model)
 	case paneSidebar:
-		if model, cmd := m.sidebar.Update(msg); cmd != nil {
-			m.sidebar = model.(sidebar.Model)
-			cmds = append(cmds, cmd)
-		}
+		model, cmd = m.sidebar.Update(msg)
+		m.sidebar = model.(sidebar.Model)
 	case paneResponse:
-		if model, cmd := m.response.Update(msg); cmd != nil {
-			m.response = model.(response.Model)
-			cmds = append(cmds, cmd)
-		}
+		model, cmd = m.response.Update(msg)
+		m.response = model.(response.Model)
 	}
-	return cmds
+	return cmd
 }
 
 func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -250,11 +225,11 @@ func (m *ParticipantModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		fallthrough
 	case paneTranscript, paneSidebar:
-		cmds := m.forwardToFocused(msg)
+		cmd := m.forwardToFocused(msg)
 		if m.activePane == paneResponse {
 			m.client.Typed(m.response.Value())
 		}
-		return m, tea.Batch(cmds...)
+		return m, cmd
 	}
 
 	return m, nil
