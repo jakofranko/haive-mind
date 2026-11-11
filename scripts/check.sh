@@ -21,6 +21,13 @@ fi
 
 test -z "$(gofmt -l .)" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
 go vet ./...
+# vet and staticcheck both miss an always-true guard such as
+# `if model, cmd := pane.Update(msg); cmd != nil || true {`: it reads as if
+# the body were conditional. Write the body unguarded.
+if grep -rnE --include='*.go' '(;|\|\|)[[:space:]]*true[[:space:]]*\{' .; then
+  echo "always-true if guard: drop the condition and keep the body" >&2
+  exit 1
+fi
 if [ "${1:-}" = "--full" ]; then
   go test -race -count=1 ./...
 else

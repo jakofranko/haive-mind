@@ -13,9 +13,5 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: gofmt
-        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
-      - name: vet
-        run: go vet ./...
-      - name: test (race detector, uncached)
-        run: go test -race -count=1 ./...
+      - name: check (gofmt, vet, guards, race-detector tests, uncached)
+        run: bash scripts/check.sh --full
