@@ -1,6 +1,6 @@
-// Package transcript is the Transcript pane both TUIs show: a scrolling,
-// Markdown-rendered history of the conversation, newest at the bottom, with
-// earlier messages from a Transcript snapshot slotted in above the live ones.
+// Package transcript is the pane both TUIs show the Transcript in: scrolling,
+// rendered as Markdown, newest at the bottom, with earlier messages from a
+// Transcript snapshot slotted in above the live ones.
 package transcript
 
 import (
@@ -15,14 +15,14 @@ import (
 )
 
 type Model struct {
-	viewport viewport.Model
-	content  string // full history; viewport.View() only returns the visible lines
-	headLen  int    // length of the welcome text at the start of content; older entries go after it
-	renderer *glamour.TermRenderer
-	width    int
-	height   int
-	styles   Styles
-	active   bool
+	viewport   viewport.Model
+	content    string // full history; viewport.View() only returns the visible lines
+	welcomeLen int    // length of the welcome text at the start of content; older entries go after it
+	renderer   *glamour.TermRenderer
+	width      int
+	height     int
+	styles     Styles
+	active     bool
 }
 
 type Styles struct {
@@ -61,11 +61,11 @@ func New(welcome string) Model {
 
 	head := welcome + "\n"
 	return Model{
-		viewport: vp,
-		content:  head,
-		headLen:  len(head),
-		renderer: renderer,
-		styles:   defaultStyles(),
+		viewport:   vp,
+		content:    head,
+		welcomeLen: len(head),
+		renderer:   renderer,
+		styles:     defaultStyles(),
 	}
 }
 
@@ -138,7 +138,7 @@ func (m *Model) PrependMessages(msgs []hub.Message) {
 	for _, msg := range msgs {
 		older += m.format(msg)
 	}
-	m.content = m.content[:m.headLen] + older + m.content[m.headLen:]
+	m.content = m.content[:m.welcomeLen] + older + m.content[m.welcomeLen:]
 	m.viewport.SetContent(m.content)
 	m.viewport.GotoBottom()
 }

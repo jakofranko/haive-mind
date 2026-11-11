@@ -16,7 +16,7 @@ func TestTranscript_ShowsTheCallersWelcomeAboveEarlierMessages(t *testing.T) {
 	m.AddMessage(hub.Message{From: "p", Content: "live-message", Timestamp: time.Now(), Round: 1})
 	m.PrependMessages([]hub.Message{{From: "p", Content: "earlier-message", Timestamp: time.Now(), Round: 1}})
 
-	view := m.View()
+	view := stripANSI(m.View())
 	welcome, earlier, live := strings.Index(view, "Welcome to the test TUI"), strings.Index(view, "earlier-message"), strings.Index(view, "live-message")
 	if welcome < 0 || earlier < 0 || live < 0 {
 		t.Fatalf("view lacks the welcome or a message:\n%s", view)
