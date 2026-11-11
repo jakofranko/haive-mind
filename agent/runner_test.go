@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,10 @@ func TestMain(m *testing.M) {
 func runStub() {
 	if p := os.Getenv("STUB_ARGS_FILE"); p != "" {
 		os.WriteFile(p, []byte(strings.Join(os.Args[1:], "\x00")), 0o644)
+	}
+	if p := os.Getenv("STUB_STDIN_FILE"); p != "" {
+		in, _ := io.ReadAll(os.Stdin)
+		os.WriteFile(p, in, 0o644)
 	}
 	if ms := os.Getenv("STUB_CHILD_SLEEP_MS"); ms != "" {
 		// Like npm's opencode.cmd starting opencode.exe: a child that inherits
@@ -76,7 +81,8 @@ func stubOpencode(t *testing.T, env map[string]string) {
 
 func TestRun_ReturnsWhatTheAgentPrintsAndPassesThePrompt(t *testing.T) {
 	argsFile := filepath.Join(t.TempDir(), "args")
-	stubOpencode(t, map[string]string{"STUB_STDOUT": "the answer", "STUB_ARGS_FILE": argsFile})
+	stdinFile := filepath.Join(t.TempDir(), "stdin")
+	stubOpencode(t, map[string]string{"STUB_STDOUT": "the answer", "STUB_ARGS_FILE": argsFile, "STUB_STDIN_FILE": stdinFile})
 
 	got, err := agent.NewDefaultRunner().Run(context.Background(), "what is 2+2?")
 	if err != nil {
@@ -85,9 +91,14 @@ func TestRun_ReturnsWhatTheAgentPrintsAndPassesThePrompt(t *testing.T) {
 	if got != "the answer" {
 		t.Errorf("reply = %q, want %q", got, "the answer")
 	}
+	// The prompt goes on stdin: an argument would pass through npm's
+	// opencode.cmd on Windows, which cuts it at the first newline.
 	args, _ := os.ReadFile(argsFile)
-	if string(args) != "run\x00what is 2+2?" {
-		t.Errorf("opencode args = %q, want run <prompt>", args)
+	if string(args) != "run" {
+		t.Errorf("opencode args = %q, want just run", args)
+	}
+	if in, _ := os.ReadFile(stdinFile); string(in) != "what is 2+2?" {
+		t.Errorf("opencode stdin = %q, want the prompt", in)
 	}
 }
 

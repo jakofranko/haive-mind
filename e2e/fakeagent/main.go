@@ -1,4 +1,4 @@
-// Command fakeagent stands in for `opencode run <prompt>` in end-to-end tests.
+// Command fakeagent stands in for `opencode run` (prompt on stdin) in end-to-end tests.
 // It prints AGENTREPLY-<first word of the prompt> so a test can tell which
 // prompt the app sent without depending on the real agent.
 //
@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -15,7 +16,8 @@ import (
 )
 
 func main() {
-	prompt := strings.Join(os.Args[2:], " ") // os.Args[1] is "run"
+	in, _ := io.ReadAll(os.Stdin) // the prompt; os.Args[1] is "run"
+	prompt := string(in)
 	first := strings.Fields(prompt)
 	word := ""
 	if len(first) > 0 {

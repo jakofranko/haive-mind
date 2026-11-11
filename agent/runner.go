@@ -38,7 +38,12 @@ func (r *defaultRunner) Run(ctx context.Context, prompt string) (string, error) 
 	cmdCtx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, "opencode", "run", prompt)
+	// The prompt goes on stdin, not as an argument: on Windows opencode is
+	// npm's opencode.cmd, and a batch file cuts an argument at its first
+	// newline, so a multi-line prompt (the synthesis prompt) arrived as just
+	// its first line.
+	cmd := exec.CommandContext(cmdCtx, "opencode", "run")
+	cmd.Stdin = strings.NewReader(prompt)
 	// opencode may run as a wrapper around a child (npm's opencode.cmd starts
 	// opencode.exe), so a timeout or cancel kills the whole tree; and Run stops
 	// waiting for output soon after, should anything still hold stdout open.
