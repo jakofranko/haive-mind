@@ -10,6 +10,7 @@ package coordinator
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"jakofranko/haive-mind/hub"
@@ -18,8 +19,22 @@ import (
 type Coordinator struct {
 	hub hub.Hub
 
-	mu    sync.Mutex
-	state *State
+	mu     sync.Mutex
+	state  *State
+	export ExportWriter
+}
+
+// ExportWriter saves an export of the transcript under the file name the host
+// asked for and returns where it went. The server provides it; the Coordinator
+// only decides when the transcript is read.
+type ExportWriter func(transcript []*hub.Message, name string) (path string, err error)
+
+// SetExportWriter sets what export requests are written with. With none set,
+// an export request does nothing.
+func (c *Coordinator) SetExportWriter(w ExportWriter) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.export = w
 }
 
 func New(h hub.Hub) *Coordinator {
@@ -39,7 +54,16 @@ func (c *Coordinator) Start(ctx context.Context) error {
 func (c *Coordinator) apply(msg *hub.Message) error {
 	c.mu.Lock()
 	out := c.state.Apply(msg)
+	write := c.export
+	exporting := msg.Type == hub.MessageTypeExport && write != nil
+	var transcript []*hub.Message
+	if exporting {
+		transcript = c.state.Transcript()
+	}
 	c.mu.Unlock()
+	if exporting {
+		out = append(out, c.writeExport(write, transcript, msg.Content)...)
+	}
 	var first error
 	for _, m := range out {
 		if err := c.hub.Send(context.Background(), m); err != nil && first == nil {
@@ -47,6 +71,18 @@ func (c *Coordinator) apply(msg *hub.Message) error {
 		}
 	}
 	return first
+}
+
+// writeExport writes the transcript as it stood when the export request was
+// applied, and announces where it went. A failed write is logged and announces
+// nothing.
+func (c *Coordinator) writeExport(write ExportWriter, transcript []*hub.Message, name string) []*hub.Message {
+	path, err := write(transcript, name)
+	if err != nil {
+		slog.Error("Failed to export transcript", "error", err)
+		return nil
+	}
+	return []*hub.Message{hub.NewMessage(hub.MessageTypeExportComplete, "hub", path, 0)}
 }
 
 // Round returns the current round number.

@@ -54,11 +54,28 @@ func main() {
 	// The coordinator owns the transcript, rounds and response tracking. The
 	// hub owns agent invocation, so nothing here calls the agent.
 	coord := coordinator.New(hubChans)
+	startedAt := time.Now()
+	transcriptOf := func(messages []*hub.Message) *Transcript {
+		return &Transcript{
+			Messages:     messages,
+			Participants: hubChans.GetParticipants(),
+			StartedAt:    startedAt,
+			EndedAt:      time.Now(),
+		}
+	}
+	snapshot := func() *Transcript { return transcriptOf(coord.Transcript()) }
+	// The Coordinator handles export requests in order with everything else and
+	// hands the transcript as it stood to this writer. With no data directory
+	// there is no writer, and an export does nothing.
+	if *dataDir != "" {
+		coord.SetExportWriter(func(messages []*hub.Message, name string) (string, error) {
+			return saveTranscript(transcriptOf(messages), *dataDir, name)
+		})
+	}
 	if err := coord.Start(ctx); err != nil {
 		slog.Error("Failed to start coordinator", "error", err)
 		os.Exit(1)
 	}
-	startedAt := time.Now()
 
 	if *debug {
 		for _, msgType := range hub.RecordedTypes() {
@@ -68,29 +85,6 @@ func main() {
 			})
 		}
 	}
-
-	snapshot := func() *Transcript {
-		return &Transcript{
-			Messages:     coord.Transcript(),
-			Participants: hubChans.GetParticipants(),
-			StartedAt:    startedAt,
-			EndedAt:      time.Now(),
-		}
-	}
-
-	// Handle export requests
-	hubChans.Subscribe(ctx, hub.MessageTypeExport, func(msg *hub.Message) error {
-		if *dataDir == "" {
-			return nil
-		}
-		fullPath := filepath.Join(*dataDir, msg.Content)
-		if err := saveTranscript(snapshot(), *dataDir, msg.Content); err != nil {
-			slog.Error("Failed to export transcript", "error", err)
-			return nil
-		}
-		hubChans.Send(ctx, hub.NewMessage(hub.MessageTypeExportComplete, "hub", fullPath, 0))
-		return nil
-	})
 
 	// Start the hub
 	if err := hubChans.Start(); err != nil {
@@ -158,10 +152,10 @@ func shutdown(server *ssh.Server, h hub.Hub, snapshot func() *Transcript, dataDi
 	time.Sleep(2 * time.Second)
 
 	if dataDir != "" {
-		if err := saveTranscript(snapshot(), dataDir, "transcript.json"); err != nil {
+		if path, err := saveTranscript(snapshot(), dataDir, "transcript.json"); err != nil {
 			slog.Error("Failed to save transcript", "error", err)
 		} else {
-			slog.Info("Transcript saved", "path", filepath.Join(dataDir, "transcript.json"))
+			slog.Info("Transcript saved", "path", path)
 		}
 	}
 
@@ -169,17 +163,19 @@ func shutdown(server *ssh.Server, h hub.Hub, snapshot func() *Transcript, dataDi
 	server.Close()
 }
 
-func saveTranscript(t *Transcript, dataDir, filename string) error {
+// saveTranscript writes t as indented JSON to filename in dataDir and returns
+// the path it wrote.
+func saveTranscript(t *Transcript, dataDir, filename string) (string, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return err
+		return "", err
 	}
 	path := filepath.Join(dataDir, filename)
 	f, err := os.Create(path)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	return enc.Encode(t)
+	return path, enc.Encode(t)
 }
