@@ -1,11 +1,11 @@
 # Coding standards
 
-Judgement calls for review. Formatting, `go vet` and the race detector are enforced by CI (`.github/workflows/ci.yml`), so they are not repeated here. Vocabulary comes from `GLOSSARY.md`; decisions are in `docs/adr/`.
+Judgement calls for review. Formatting, `go vet`, always-true `if` guards and the race detector are enforced by `scripts/check.sh`, which CI runs, so they are not repeated here. Vocabulary comes from `GLOSSARY.md`; decisions are in `docs/adr/`.
 
 ## Tests
 
 - **Test the real code through a public seam**: the hub via `NewHub()` with a stub `agent.Runner`, the coordinator, a TUI model's `Update` with a real or fake hub, or the built binary in `e2e/`. A test that reimplements logic from `main.go` tests a copy.
-- **Assert on what a user sees**: strip terminal styling (`visible()`) before matching text. Golden files hold styled bytes; regenerate with `-update` and confirm the diff is only the lines you meant to change.
+- **Assert on what a user sees**: strip terminal styling (`visible()`) before matching text. Golden files hold styled bytes; regenerate with `-update` and confirm the diff is only the lines you meant to change. To show something leaves a pane unchanged, compare its whole `View()` before and after rather than a hand-picked size: a pane is only drawn as wide as its content.
 - **Wait for the outcome**: poll with `eventually`, `waitFor` or `eventuallyDrawn`, with deadlines sized for a loaded machine. Use a fixed sleep only to let a "nothing else happens" check settle.
 - **Observe a running Bubble Tea program through its drawn output**, never its model fields, so the test and the program do not touch the same state from two goroutines.
 - **Give a hub a stub runner (`SetAgentRunner`/`SetSynthesizer`) when a test sends a directive or aggregate.** `NewHub()` has no runner of its own, so nothing in a test can launch the real `opencode`.
