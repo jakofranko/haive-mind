@@ -69,10 +69,7 @@ func main() {
 	// there is no writer, and an export does nothing.
 	if *dataDir != "" {
 		coord.SetExportWriter(func(messages []*hub.Message, name string) (string, error) {
-			if err := saveTranscript(transcriptOf(messages), *dataDir, name); err != nil {
-				return "", err
-			}
-			return filepath.Join(*dataDir, name), nil
+			return saveTranscript(transcriptOf(messages), *dataDir, name)
 		})
 	}
 	if err := coord.Start(ctx); err != nil {
@@ -155,10 +152,10 @@ func shutdown(server *ssh.Server, h hub.Hub, snapshot func() *Transcript, dataDi
 	time.Sleep(2 * time.Second)
 
 	if dataDir != "" {
-		if err := saveTranscript(snapshot(), dataDir, "transcript.json"); err != nil {
+		if path, err := saveTranscript(snapshot(), dataDir, "transcript.json"); err != nil {
 			slog.Error("Failed to save transcript", "error", err)
 		} else {
-			slog.Info("Transcript saved", "path", filepath.Join(dataDir, "transcript.json"))
+			slog.Info("Transcript saved", "path", path)
 		}
 	}
 
@@ -166,17 +163,19 @@ func shutdown(server *ssh.Server, h hub.Hub, snapshot func() *Transcript, dataDi
 	server.Close()
 }
 
-func saveTranscript(t *Transcript, dataDir, filename string) error {
+// saveTranscript writes t as indented JSON to filename in dataDir and returns
+// the path it wrote.
+func saveTranscript(t *Transcript, dataDir, filename string) (string, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return err
+		return "", err
 	}
 	path := filepath.Join(dataDir, filename)
 	f, err := os.Create(path)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	return enc.Encode(t)
+	return path, enc.Encode(t)
 }

@@ -54,12 +54,14 @@ func (c *Coordinator) Start(ctx context.Context) error {
 func (c *Coordinator) apply(msg *hub.Message) error {
 	c.mu.Lock()
 	out := c.state.Apply(msg)
-	write, transcript := c.export, []*hub.Message(nil)
-	if msg.Type == hub.MessageTypeExport && write != nil {
+	write := c.export
+	exporting := msg.Type == hub.MessageTypeExport && write != nil
+	var transcript []*hub.Message
+	if exporting {
 		transcript = c.state.Transcript()
 	}
 	c.mu.Unlock()
-	if transcript != nil {
+	if exporting {
 		out = append(out, c.writeExport(write, transcript, msg.Content)...)
 	}
 	var first error
