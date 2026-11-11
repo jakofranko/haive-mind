@@ -1,3 +1,6 @@
+// Package transcript is the pane both TUIs show the Transcript in: scrolling,
+// rendered as Markdown, newest at the bottom, with earlier messages from a
+// Transcript snapshot slotted in above the live ones.
 package transcript
 
 import (
@@ -12,14 +15,14 @@ import (
 )
 
 type Model struct {
-	viewport viewport.Model
-	content  string // full history; viewport.View() only returns the visible lines
-	headLen  int    // length of the welcome text at the start of content; older entries go after it
-	renderer *glamour.TermRenderer
-	width    int
-	height   int
-	styles   Styles
-	active   bool
+	viewport   viewport.Model
+	content    string // full history; viewport.View() only returns the visible lines
+	welcomeLen int    // length of the welcome text at the start of content; older entries go after it
+	renderer   *glamour.TermRenderer
+	width      int
+	height     int
+	styles     Styles
+	active     bool
 }
 
 type Styles struct {
@@ -43,26 +46,26 @@ func defaultStyles() Styles {
 	}
 }
 
-func New() Model {
+// New is an empty pane that shows welcome until the first message.
+func New(welcome string) Model {
 	renderer, err := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("dark"), // fixed: auto-detection would read the server's terminal, not the SSH user's
 		glamour.WithWordWrap(80),
 	)
 	if err != nil {
-		renderer = nil
+		renderer = nil // messages are shown as raw text
 	}
 
 	vp := viewport.New(0, 0)
-	const welcome = "Welcome to Haive Mind Participant TUI\nWaiting for messages..."
 	vp.SetContent(welcome)
 
 	head := welcome + "\n"
 	return Model{
-		viewport: vp,
-		content:  head,
-		headLen:  len(head),
-		renderer: renderer,
-		styles:   defaultStyles(),
+		viewport:   vp,
+		content:    head,
+		welcomeLen: len(head),
+		renderer:   renderer,
+		styles:     defaultStyles(),
 	}
 }
 
@@ -70,31 +73,19 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
-type messageMsg hub.Message
-
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m.layout()
-		return m, tea.Batch(cmds...)
-
-	case messageMsg:
-		m.addMessage(hub.Message(msg))
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		m.SetSize(size.Width, size.Height)
 		return m, nil
 	}
-
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
-	cmds = append(cmds, cmd)
-
-	return m, tea.Batch(cmds...)
+	return m, cmd
 }
 
 func (m *Model) layout() {
+	// Border (2) + title (1) + padding (2) = 5 lines overhead
+	// Border left/right (2) + padding (2) = 4 cols overhead
 	m.viewport.Width = m.width - 4
 	m.viewport.Height = m.height - 5
 	if m.viewport.Width < 10 {
@@ -103,10 +94,6 @@ func (m *Model) layout() {
 	if m.viewport.Height < 5 {
 		m.viewport.Height = 5
 	}
-}
-
-func (m *Model) addMessage(msg hub.Message) {
-	m.appendContent(m.format(msg))
 }
 
 // appendContent adds text to the full history and shows the newest end.
@@ -151,7 +138,7 @@ func (m *Model) PrependMessages(msgs []hub.Message) {
 	for _, msg := range msgs {
 		older += m.format(msg)
 	}
-	m.content = m.content[:m.headLen] + older + m.content[m.headLen:]
+	m.content = m.content[:m.welcomeLen] + older + m.content[m.welcomeLen:]
 	m.viewport.SetContent(m.content)
 	m.viewport.GotoBottom()
 }
@@ -166,15 +153,6 @@ func (m *Model) AddSystemMessage(content string) {
 	msg := fmt.Sprintf("[%s] *%s*\n---\n",
 		time.Now().Format("15:04:05"), content)
 	m.appendContent(msg)
-}
-
-func (m *Model) GetContent() string {
-	return m.viewport.View()
-}
-
-func (m *Model) SetContent(content string) {
-	m.content = content
-	m.viewport.SetContent(content)
 }
 
 // renderMarkdown renders text as Markdown, falling back to the raw text if the
