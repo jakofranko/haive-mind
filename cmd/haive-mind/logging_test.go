@@ -79,3 +79,21 @@ func TestLogger_UnwritableLogFileIsAnError(t *testing.T) {
 		t.Fatal("want an error for an unwritable log file")
 	}
 }
+
+// With no stdout (the server was started with output going nowhere useful) the
+// log file is still written, and logging does not fail.
+func TestLogger_WithoutStdoutStillWritesTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "haive.log")
+
+	logger, closeLog, err := newLogger(path, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger.Info("participant joined", "name", "alice")
+	closeLog()
+
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), "alice") {
+		t.Errorf("log file lacks the event: %q", b)
+	}
+}
