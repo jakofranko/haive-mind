@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"jakofranko/haive-mind/agent"
+	"github.com/jakofranko/haive-mind/agent"
 )
 
 // ErrHubStopped is returned by Send once the hub has been stopped.

@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jakofranko/haive-mind/hub"
 	"github.com/stretchr/testify/assert"
-	"jakofranko/haive-mind/hub"
 )
 
 const notice = "asked you to revise"

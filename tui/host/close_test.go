@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // countingHub wraps a real hub and counts subscriptions and unsubscribes.

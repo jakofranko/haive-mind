@@ -6,8 +6,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jakofranko/haive-mind/hub"
 	"github.com/stretchr/testify/assert"
-	"jakofranko/haive-mind/hub"
 )
 
 // When an export finishes the host's transcript says where the file went. The

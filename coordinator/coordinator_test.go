@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/coordinator"
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/coordinator"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // countingRunner records every prompt it is asked to run.

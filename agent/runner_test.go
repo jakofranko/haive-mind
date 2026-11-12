@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/agent"
+	"github.com/jakofranko/haive-mind/agent"
 )
 
 // The test binary doubles as a stand-in `opencode`: when STUB_OPENCODE is set

@@ -7,7 +7,7 @@
 // not depend on Bubble Tea; each model wraps Next in its own thin command.
 package session
 
-import "jakofranko/haive-mind/hub"
+import "github.com/jakofranko/haive-mind/hub"
 
 // Event is something that happened, as a session's TUI needs to know it.
 // Every role gets CatchUpEvent, MessageEvent, ParticipantEvent and

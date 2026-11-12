@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"jakofranko/haive-mind/agent"
+	"github.com/jakofranko/haive-mind/agent"
 )
 
 // stubOpencodeCmd puts opencode on PATH the way npm installs it on Windows: an

@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/charmbracelet/ssh"
-	"jakofranko/haive-mind/agent"
-	"jakofranko/haive-mind/coordinator"
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/sshserver"
+	"github.com/jakofranko/haive-mind/agent"
+	"github.com/jakofranko/haive-mind/coordinator"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/sshserver"
 )
 
 type Transcript struct {

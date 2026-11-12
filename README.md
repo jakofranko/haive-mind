@@ -6,21 +6,32 @@ SSH TUI Collaborative Agent App
 
 Haive Mind is a collaborative agent application that runs over SSH. A host connects and sends directives to an AI agent. Multiple participants connect via SSH and respond to the agent's prompts. The host can aggregate responses and send them back to the agent for further processing.
 
+## Install
+
+Requires [Go](https://go.dev/dl/) 1.26 or newer.
+
+```bash
+go install github.com/jakofranko/haive-mind/cmd/haive-mind@latest
+```
+
+This puts a `haive-mind` binary in `$(go env GOPATH)/bin` (usually `~/go/bin`); make sure that directory is on your `PATH`.
+
+The server calls the agent by running [`opencode`](https://opencode.ai), so `opencode` must be installed and on the `PATH` of the machine running `haive-mind`. The host and participants need only an `ssh` client.
+
 ## Quick Start
 
 ```bash
-# Build the server
-go build -o haive-mind ./cmd/haive-mind
-
 # Run the server (default port 2222)
-./haive-mind --data-dir ./data
+haive-mind --data-dir ./data
 
 # Accept local connections only (no firewall prompt on Windows)
-./haive-mind --data-dir ./data --bind 127.0.0.1
+haive-mind --data-dir ./data --bind 127.0.0.1
 
 # In separate terminals, connect as host and participants:
 ssh -p 2222 localhost
 ```
+
+Run `haive-mind --help` for all flags (`--port`, `--bind`, `--host-key`, `--data-dir`, `--debug`, `--log-file`, `--agent-timeout`). Without `--host-key`, an `id_ed25519` key is generated in the current directory and reused on later runs.
 
 **Who is the host?** The first SSH connection becomes the host, whatever its SSH username, and it is registered as the participant `host`. Everyone who connects while a host session is live is a participant. The role is freed when the host's session ends, so whoever connects next becomes the host. SSH usernames are not authenticated, so this suits a single trusted group: start the host session yourself before sharing the address.
 
@@ -36,10 +47,10 @@ ssh -p 2222 localhost
 
 ### Automated Tests
 
-Run the automated integration tests:
+The end-to-end tests in `e2e/` build the real server and drive it over SSH with a fake agent:
 
 ```bash
-go test -v -run TestIntegration
+go test -v ./e2e/...
 ```
 
 This tests:
@@ -53,7 +64,7 @@ This tests:
 
 1. **Start the server** with transcript saving:
    ```bash
-   ./haive-mind --port 2222 --data-dir ./test-data --debug
+   haive-mind --port 2222 --data-dir ./test-data --debug
    ```
 
 2. **Connect as host** (first connection becomes host):
@@ -104,19 +115,19 @@ This tests:
 ### Running Tests
 
 ```bash
-# All tests
-go test ./...
+# Fast checks while working (formatting, vet, every test except e2e)
+bash scripts/check.sh
+
+# Exactly what CI runs; do this before committing
+bash scripts/check.sh --full
 
 # Specific package
 go test ./hub/...
 go test ./tui/host/...
 go test ./tui/participant/...
-
-# Integration tests
-go test -v -run TestIntegration
 ```
 
-### Building
+### Building from source
 
 ```bash
 go build -o haive-mind ./cmd/haive-mind
@@ -137,7 +148,7 @@ go build -o participant-tui ./cmd/participant-tui
 ├── tui/
 │   ├── host/            # Host TUI components
 │   └── participant/     # Participant TUI components
-├── integration_test.go  # End-to-end integration tests
+├── e2e/                 # End-to-end tests against the real binary
 └── go.mod
 ```
 
@@ -168,4 +179,6 @@ Host                    Hub                    Participants
 
 ## License
 
-MIT
+Copyright (C) 2026 Jake Franklin
+
+Haive Mind is free software under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified version as a network service, you must offer its users the source of your modifications.

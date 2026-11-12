@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/tui/inbox"
+	"github.com/jakofranko/haive-mind/tui/inbox"
 )
 
 const wait = 2 * time.Second

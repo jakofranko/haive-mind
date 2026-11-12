@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // G28: constructing the SSH server must not take messages away from hub

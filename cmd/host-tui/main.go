@@ -4,8 +4,8 @@ import (
 	"log"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/host"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/host"
 )
 
 func main() {

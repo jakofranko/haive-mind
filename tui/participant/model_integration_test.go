@@ -10,7 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // syncBuffer is an output sink the test can read while the program writes.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // DraftEvent is a synthesized draft of the aggregate, for the host to edit.

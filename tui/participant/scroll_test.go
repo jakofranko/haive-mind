@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // With the Transcript pane focused, a participant who pages up sees older

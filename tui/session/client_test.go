@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/session"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/session"
 )
 
 // What every Session client does, whatever its role: deliver in send order

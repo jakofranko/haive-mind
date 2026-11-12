@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/inbox"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/inbox"
 )
 
 // CatchUpEvent is the first event a session's TUI is given, once its

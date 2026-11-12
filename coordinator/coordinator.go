@@ -13,7 +13,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 type Coordinator struct {

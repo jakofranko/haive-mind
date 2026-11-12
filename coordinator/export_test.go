@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // exportWriter is a stub writer: it captures the transcript it is given and

@@ -3,7 +3,7 @@ package host
 import (
 	"testing"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // #29: when a participant disconnects the host's list must drop them. The hub

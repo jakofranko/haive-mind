@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jakofranko/haive-mind/hub"
 	"github.com/stretchr/testify/assert"
-	"jakofranko/haive-mind/hub"
 )
 
 // hostWithAlice is a host who has caught up and sees Alice join, with the

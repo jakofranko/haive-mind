@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/jakofranko/haive-mind/hub"
 	"github.com/muesli/termenv"
-	"jakofranko/haive-mind/hub"
 )
 
 // youRows returns the sidebar rows drawn in the "you" style (bold), as the

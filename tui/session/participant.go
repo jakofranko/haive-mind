@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // Participant is a participant session's Session client. It knows where the

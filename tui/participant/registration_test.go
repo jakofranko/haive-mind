@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // A session registers once, on connect; choosing a name renames that entry
