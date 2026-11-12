@@ -1,8 +1,6 @@
 # Binaries (anchored so they do not match cmd/haive-mind/)
 *.exe
 /haive-mind
-/host-tui
-/participant-tui
 
 # SSH keys
 .ssh_host_key

@@ -38,8 +38,8 @@ Run `haive-mind --help` for all flags (`--port`, `--bind`, `--host-key`, `--data
 ## Architecture
 
 - **Server** (`cmd/haive-mind`): SSH server that manages sessions and message routing
-- **Host TUI** (`cmd/host-tui`): Host interface for sending directives, viewing transcripts, aggregating responses
-- **Participant TUI** (`cmd/participant-tui`): Participant interface for responding to agent prompts
+- **Host TUI** (`tui/host`): Host interface for sending directives, viewing transcripts, aggregating responses; served to the first SSH connection
+- **Participant TUI** (`tui/participant`): Participant interface for responding to agent prompts; served to every other SSH connection
 - **Hub** (`hub/`): Message routing and agent communication
 - **SSH Server** (`sshserver/`): SSH session management with Bubble Tea TUI integration
 
@@ -131,8 +131,6 @@ go test ./tui/participant/...
 
 ```bash
 go build -o haive-mind ./cmd/haive-mind
-go build -o host-tui ./cmd/host-tui
-go build -o participant-tui ./cmd/participant-tui
 ```
 
 ## Project Structure
@@ -140,9 +138,7 @@ go build -o participant-tui ./cmd/participant-tui
 ```
 .
 ├── cmd/
-│   ├── haive-mind/      # Main SSH server entry point
-│   ├── host-tui/        # Host TUI entry point
-│   └── participant-tui/ # Participant TUI entry point
+│   └── haive-mind/      # The server: the only binary
 ├── hub/                 # Message hub and agent runner
 ├── sshserver/           # SSH server with TUI session management
 ├── tui/
