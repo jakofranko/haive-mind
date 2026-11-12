@@ -48,14 +48,7 @@ func main() {
 	}
 	*hostKey, *dataDir = loc.HostKey, loc.DataDir
 
-	// An explicit --log-file keeps logs on stdout too. The default log file is
-	// for unattended runs, so stdout gets the logs only when someone is
-	// watching it.
-	var stdout io.Writer = os.Stdout
-	if loc.LogIsDefault && !isTerminal(os.Stdout) {
-		stdout = nil
-	}
-	setupLogging(loc.LogFile, *debug, stdout)
+	setupLogging(loc.LogFile, *debug, logStdout(loc.LogIsDefault, isTerminal(os.Stdout), os.Stdout))
 	slog.Info("Debug flag value", "value", *debug)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -210,4 +203,15 @@ func saveTranscript(t *Transcript, dataDir, filename string) (string, error) {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	return path, enc.Encode(t)
+}
+
+// logStdout is where the readable log text goes: out, unless the log file is
+// the default one and out is not a terminal. The default log file is for
+// unattended runs, so stdout gets the logs only when someone is watching it; a
+// log file the user named keeps logs on stdout too.
+func logStdout(logIsDefault, terminal bool, out io.Writer) io.Writer {
+	if logIsDefault && !terminal {
+		return nil
+	}
+	return out
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -14,7 +15,7 @@ import (
 // and the user directories pointed at xdg. The home directory variables point
 // at a scratch directory so that a bug can never write into the real one. It
 // returns once the server accepts connections.
-func runWithDefaults(t *testing.T, dir, xdg string) (cmd *exec.Cmd, stdout *bytes.Buffer) {
+func runWithDefaults(t *testing.T, dir, xdg string) (cmd *exec.Cmd, stdout *bytes.Buffer, addr string) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("builds and runs the real binary; skipped with -short")
@@ -27,6 +28,8 @@ func runWithDefaults(t *testing.T, dir, xdg string) (cmd *exec.Cmd, stdout *byte
 	cmd = exec.Command(filepath.Join(bin, exe("haive-mind")), "--bind", "127.0.0.1", "--port", port)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
+		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"FAKE_AGENT_LOG="+filepath.Join(t.TempDir(), "agent.log"),
 		"XDG_DATA_HOME="+filepath.Join(xdg, "share"),
 		"XDG_STATE_HOME="+filepath.Join(xdg, "state"),
 		"HOME="+scratchHome, "USERPROFILE="+scratchHome, "LOCALAPPDATA="+scratchHome)
@@ -40,7 +43,7 @@ func runWithDefaults(t *testing.T, dir, xdg string) (cmd *exec.Cmd, stdout *byte
 	for i := 0; i < 100; i++ {
 		if c, err := net.Dial("tcp", "127.0.0.1:"+port); err == nil {
 			c.Close()
-			return cmd, stdout
+			return cmd, stdout, "127.0.0.1:" + port
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -52,7 +55,7 @@ func runWithDefaults(t *testing.T, dir, xdg string) (cmd *exec.Cmd, stdout *byte
 func stop(t *testing.T, cmd *exec.Cmd) {
 	t.Helper()
 	if err := interrupt(cmd); err != nil {
-		t.Skipf("cannot signal the server on this machine: %v", err)
+		t.Fatalf("cannot signal the server: %v", err)
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
@@ -89,12 +92,19 @@ func TestDefaultLocations_FollowTheUserDirectoriesNotTheWorkingDirectory(t *test
 	keyFile := filepath.Join(dataDir, "id_ed25519")
 
 	firstDir := t.TempDir()
-	cmd, stdout := runWithDefaults(t, firstDir, xdg)
+	cmd, stdout, _ := runWithDefaults(t, firstDir, xdg)
 	stop(t, cmd)
 
 	key, err := os.ReadFile(keyFile)
 	if err != nil {
 		t.Fatalf("no host key in the data directory: %v", err)
+	}
+	if runtime.GOOS != "windows" {
+		for path, want := range map[string]os.FileMode{dataDir: 0o700, keyFile: 0o600} {
+			if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != want {
+				t.Errorf("%s: mode %v (err %v), want %o", path, fi, err, want)
+			}
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "transcript.json")); err != nil {
 		t.Errorf("no transcript saved without --data-dir: %v", err)
@@ -110,7 +120,7 @@ func TestDefaultLocations_FollowTheUserDirectoriesNotTheWorkingDirectory(t *test
 	}
 
 	secondDir := t.TempDir()
-	cmd, _ = runWithDefaults(t, secondDir, xdg)
+	cmd, _, _ = runWithDefaults(t, secondDir, xdg)
 	stop(t, cmd)
 	again, err := os.ReadFile(keyFile)
 	if err != nil || !bytes.Equal(key, again) {
@@ -118,5 +128,27 @@ func TestDefaultLocations_FollowTheUserDirectoriesNotTheWorkingDirectory(t *test
 	}
 	if got := filesIn(t, secondDir); len(got) != 0 {
 		t.Errorf("the working directory should stay empty, found %v", got)
+	}
+}
+
+// The host's export lands in the data directory without --data-dir.
+func TestDefaultLocations_ExportGoesToTheDataDirectory(t *testing.T) {
+	xdg := t.TempDir()
+	cmd, _, addr := runWithDefaults(t, t.TempDir(), xdg)
+	t.Cleanup(func() { cmd.Process.Kill() })
+
+	host := connect(t, addr, "host")
+	host.joinAs(t, "Hosty")
+	host.send(t, "\t\t") // the directive input
+	host.send(t, "\t")   // the buttons
+	for i := 0; i < 3; i++ {
+		host.send(t, "l") // one key event per press
+	}
+	host.send(t, "\r") // Export
+	host.waitFor(t, "Exported to")
+
+	files, _ := filepath.Glob(filepath.Join(xdg, "share", "haive-mind", "transcript_*.json"))
+	if len(files) != 1 {
+		t.Errorf("want one exported transcript in the default data directory, got %v", files)
 	}
 }

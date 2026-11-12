@@ -97,3 +97,25 @@ func TestLogger_WithoutStdoutStillWritesTheFile(t *testing.T) {
 		t.Errorf("log file lacks the event: %q", b)
 	}
 }
+
+// Logs also go to stdout when someone is watching it (a terminal), or when the
+// user named the log file themselves. Only the default log file, with stdout
+// piped or redirected, keeps stdout quiet.
+func TestLogStdout_QuietOnlyForTheDefaultLogFileWithoutATerminal(t *testing.T) {
+	var out bytes.Buffer
+	for _, tc := range []struct {
+		name               string
+		logIsDefault, term bool
+		wantStdout         bool
+	}{
+		{"default file, terminal", true, true, true},
+		{"default file, piped", true, false, false},
+		{"explicit file, terminal", false, true, true},
+		{"explicit file, piped", false, false, true},
+	} {
+		got := logStdout(tc.logIsDefault, tc.term, &out)
+		if (got != nil) != tc.wantStdout {
+			t.Errorf("%s: stdout used = %v, want %v", tc.name, got != nil, tc.wantStdout)
+		}
+	}
+}

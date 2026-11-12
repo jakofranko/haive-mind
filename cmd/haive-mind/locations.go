@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,16 +13,20 @@ const appDir = "haive-mind"
 // defaultDirs returns where haive-mind keeps its data (transcripts and the SSH
 // host key) and its logs when the matching flags are not given. An absolute
 // XDG_DATA_HOME / XDG_STATE_HOME wins on every platform; otherwise the
-// platform's own convention applies. It fails rather than return a path
-// relative to the working directory.
-func defaultDirs(getenv func(string) string, goos, home string) (data, logs string, err error) {
+// platform's own convention applies. A directory that would need an unknown
+// home directory is "": there is no default, and never one relative to the
+// working directory.
+func defaultDirs(getenv func(string) string, goos, home string) (data, logs string) {
 	dataBase, logsBase := platformBases(getenv, goos, home)
-	dataBase = xdgBase(getenv, "XDG_DATA_HOME", dataBase)
-	logsBase = xdgBase(getenv, "XDG_STATE_HOME", logsBase)
-	if !filepath.IsAbs(dataBase) || !filepath.IsAbs(logsBase) {
-		return "", "", errors.New("cannot find a home directory; set XDG_DATA_HOME and XDG_STATE_HOME")
+	return underApp(xdgBase(getenv, "XDG_DATA_HOME", dataBase)), underApp(xdgBase(getenv, "XDG_STATE_HOME", logsBase))
+}
+
+// underApp is the haive-mind directory under base, or "" when base is unknown.
+func underApp(base string) string {
+	if !filepath.IsAbs(base) {
+		return ""
 	}
-	return filepath.Join(dataBase, appDir), filepath.Join(logsBase, appDir), nil
+	return filepath.Join(base, appDir)
 }
 
 // platformBases are the base directories for data and logs when no XDG
@@ -75,10 +78,7 @@ func resolveLocations(hostKey, dataDir, logFile string, getenv func(string) stri
 	if hostKey != "" && dataDir != "" && logFile != "" {
 		return loc, nil
 	}
-	defData, defLogs, err := defaultDirs(getenv, goos, home)
-	if err != nil {
-		return locations{}, err
-	}
+	defData, defLogs := defaultDirs(getenv, goos, home)
 	if loc.HostKey == "" || loc.DataDir == "" {
 		var flags []string
 		if loc.DataDir == "" {
@@ -86,6 +86,9 @@ func resolveLocations(hostKey, dataDir, logFile string, getenv func(string) stri
 		}
 		if loc.HostKey == "" {
 			flags = append(flags, "--host-key")
+		}
+		if defData == "" {
+			return locations{}, noDefault("data directory", "XDG_DATA_HOME", strings.Join(flags, " and "))
 		}
 		if err := makeDir(defData, strings.Join(flags, " and ")); err != nil {
 			return locations{}, err
@@ -98,6 +101,9 @@ func resolveLocations(hostKey, dataDir, logFile string, getenv func(string) stri
 		loc.DataDir = defData
 	}
 	if loc.LogFile == "" {
+		if defLogs == "" {
+			return locations{}, noDefault("log directory", "XDG_STATE_HOME", "--log-file")
+		}
 		if err := makeDir(defLogs, "--log-file"); err != nil {
 			return locations{}, err
 		}
@@ -105,6 +111,12 @@ func resolveLocations(hostKey, dataDir, logFile string, getenv func(string) stri
 		loc.LogIsDefault = true
 	}
 	return loc, nil
+}
+
+// noDefault is the error for a default directory that cannot be placed because
+// the home directory is unknown.
+func noDefault(what, variable, flags string) error {
+	return fmt.Errorf("cannot find a home directory to place the default %s; set %s to an absolute path or use %s", what, variable, flags)
 }
 
 // makeDir creates dir (private to the user) and, if it cannot, says which flag
