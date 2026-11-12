@@ -3,7 +3,9 @@ package agent_test
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -26,6 +28,19 @@ func TestMain(m *testing.M) {
 func runStub() {
 	if p := os.Getenv("STUB_ARGS_FILE"); p != "" {
 		os.WriteFile(p, []byte(strings.Join(os.Args[1:], "\x00")), 0o644)
+	}
+	if p := os.Getenv("STUB_STDIN_FILE"); p != "" {
+		in, _ := io.ReadAll(os.Stdin)
+		os.WriteFile(p, in, 0o644)
+	}
+	if ms := os.Getenv("STUB_CHILD_SLEEP_MS"); ms != "" {
+		// Like npm's opencode.cmd starting opencode.exe: a child that inherits
+		// stdout and would outlive this process.
+		self, _ := os.Executable()
+		child := exec.Command(self)
+		child.Env = append(os.Environ(), "STUB_CHILD_SLEEP_MS=", "STUB_SLEEP_MS="+ms)
+		child.Stdout = os.Stdout
+		child.Start()
 	}
 	if ms := os.Getenv("STUB_SLEEP_MS"); ms != "" {
 		d, _ := time.ParseDuration(ms + "ms")
@@ -66,7 +81,8 @@ func stubOpencode(t *testing.T, env map[string]string) {
 
 func TestRun_ReturnsWhatTheAgentPrintsAndPassesThePrompt(t *testing.T) {
 	argsFile := filepath.Join(t.TempDir(), "args")
-	stubOpencode(t, map[string]string{"STUB_STDOUT": "the answer", "STUB_ARGS_FILE": argsFile})
+	stdinFile := filepath.Join(t.TempDir(), "stdin")
+	stubOpencode(t, map[string]string{"STUB_STDOUT": "the answer", "STUB_ARGS_FILE": argsFile, "STUB_STDIN_FILE": stdinFile})
 
 	got, err := agent.NewDefaultRunner().Run(context.Background(), "what is 2+2?")
 	if err != nil {
@@ -75,9 +91,14 @@ func TestRun_ReturnsWhatTheAgentPrintsAndPassesThePrompt(t *testing.T) {
 	if got != "the answer" {
 		t.Errorf("reply = %q, want %q", got, "the answer")
 	}
+	// The prompt goes on stdin: an argument would pass through npm's
+	// opencode.cmd on Windows, which cuts it at the first newline.
 	args, _ := os.ReadFile(argsFile)
-	if string(args) != "run\x00what is 2+2?" {
-		t.Errorf("opencode args = %q, want run <prompt>", args)
+	if string(args) != "run" {
+		t.Errorf("opencode args = %q, want just run", args)
+	}
+	if in, _ := os.ReadFile(stdinFile); string(in) != "what is 2+2?" {
+		t.Errorf("opencode stdin = %q, want the prompt", in)
 	}
 }
 
@@ -118,6 +139,24 @@ func TestRun_TimesOutAfterTheConfiguredDuration(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 3*time.Second {
 		t.Errorf("took %v to give up, want about 200ms", elapsed)
+	}
+}
+
+// On Windows opencode is npm's opencode.cmd, which starts opencode.exe. The
+// timeout kills the wrapper, but opencode.exe still holds stdout open; the
+// runner must give up anyway rather than wait for it to finish.
+func TestRun_TimesOutWhenTheAgentsChildKeepsRunning(t *testing.T) {
+	stubOpencode(t, map[string]string{"STUB_SLEEP_MS": "15000", "STUB_CHILD_SLEEP_MS": "15000"})
+
+	// Long enough for the stub to start its child before the timeout kills it.
+	const timeout = 2 * time.Second
+	start := time.Now()
+	_, err := agent.NewRunner(timeout).Run(context.Background(), "q")
+	if !errors.Is(err, agent.ErrAgentTimeout) {
+		t.Fatalf("err = %v, want ErrAgentTimeout", err)
+	}
+	if elapsed := time.Since(start); elapsed > timeout+3*time.Second {
+		t.Errorf("took %v to give up, want about %v", elapsed.Round(time.Millisecond), timeout)
 	}
 }
 
