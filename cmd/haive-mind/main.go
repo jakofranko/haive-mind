@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -30,15 +32,23 @@ type Transcript struct {
 func main() {
 	port := flag.String("port", "2222", "SSH server port")
 	bind := flag.String("bind", "", "Address to listen on; empty means every interface (use 127.0.0.1 to accept local connections only)")
-	hostKey := flag.String("host-key", "", "Path to SSH host key. If empty, an id_ed25519 key is generated in (or reused from) the current directory")
-	dataDir := flag.String("data-dir", "", "Data directory for transcript storage")
+	hostKey := flag.String("host-key", "", "Path to the SSH host key; generated if missing. Default: id_ed25519 in the data directory (see README for per-OS locations)")
+	dataDir := flag.String("data-dir", "", "Directory for saved transcripts. Default: haive-mind under $XDG_DATA_HOME (~/.local/share; %LocalAppData% on Windows; ~/Library/Application Support on macOS)")
 	debug := flag.Bool("debug", false, "Enable debug logging (hub event trace)")
-	logFile := flag.String("log-file", "", "Log file path (JSON format)")
+	logFile := flag.String("log-file", "", "Log file path (JSON format). Default: haive-mind.log under $XDG_STATE_HOME (~/.local/state; %LocalAppData% on Windows; ~/Library/Logs on macOS), with logs also printed when stdout is a terminal")
 	agentTimeout := flag.Duration("agent-timeout", 120*time.Second, "How long to wait for the agent (and the synthesizer) to answer")
 
 	flag.Parse()
 
-	setupLogging(*logFile, *debug)
+	home, _ := os.UserHomeDir() // empty when unknown; resolveLocations then needs XDG variables
+	loc, err := resolveLocations(*hostKey, *dataDir, *logFile, os.Getenv, runtime.GOOS, home)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "haive-mind:", err)
+		os.Exit(1)
+	}
+	*hostKey, *dataDir = loc.HostKey, loc.DataDir
+
+	setupLogging(loc.LogFile, *debug, logStdout(loc.LogIsDefault, isTerminal(os.Stdout), os.Stdout))
 	slog.Info("Debug flag value", "value", *debug)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -112,8 +122,15 @@ func main() {
 	}
 }
 
-func setupLogging(logFile string, debug bool) {
-	logger, _, err := newLogger(logFile, debug, os.Stdout)
+// isTerminal reports whether f is an interactive terminal rather than a pipe
+// or a file.
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+func setupLogging(logFile string, debug bool, stdout io.Writer) {
+	logger, _, err := newLogger(logFile, debug, stdout)
 	if err != nil {
 		slog.Error("Failed to open log file", "error", err)
 		os.Exit(1)
@@ -123,8 +140,8 @@ func setupLogging(logFile string, debug bool) {
 	slog.Info("Logging configured", "logFile", logFile, "debug", debug)
 }
 
-// newLogger writes readable text to stdout and, when logFile is set, the same
-// events as JSON to that file. Debug detail appears only when debug is set.
+// newLogger writes the events as JSON to logFile (when set) and as readable
+// text to stdout (when not nil). Debug detail appears only when debug is set.
 // The returned func closes the log file.
 func newLogger(logFile string, debug bool, stdout io.Writer) (*slog.Logger, func(), error) {
 	level := slog.LevelInfo
@@ -132,15 +149,23 @@ func newLogger(logFile string, debug bool, stdout io.Writer) (*slog.Logger, func
 		level = slog.LevelDebug
 	}
 	opts := &slog.HandlerOptions{Level: level}
-	text := slog.NewTextHandler(stdout, opts)
-	if logFile == "" {
-		return slog.New(text), func() {}, nil
+	var handlers []slog.Handler
+	if stdout != nil {
+		handlers = append(handlers, slog.NewTextHandler(stdout, opts))
 	}
-	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return nil, nil, err
+	closeLog := func() {}
+	if logFile != "" {
+		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return nil, nil, err
+		}
+		handlers = append(handlers, slog.NewJSONHandler(f, opts))
+		closeLog = func() { f.Close() }
 	}
-	return slog.New(slog.NewMultiHandler(text, slog.NewJSONHandler(f, opts))), func() { f.Close() }, nil
+	if len(handlers) == 1 {
+		return slog.New(handlers[0]), closeLog, nil
+	}
+	return slog.New(slog.NewMultiHandler(handlers...)), closeLog, nil
 }
 
 func shutdown(server *ssh.Server, h hub.Hub, snapshot func() *Transcript, dataDir string) {
@@ -178,4 +203,15 @@ func saveTranscript(t *Transcript, dataDir, filename string) (string, error) {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	return path, enc.Encode(t)
+}
+
+// logStdout is where the readable log text goes: out, unless the log file is
+// the default one and out is not a terminal. The default log file is for
+// unattended runs, so stdout gets the logs only when someone is watching it; a
+// log file the user named keeps logs on stdout too.
+func logStdout(logIsDefault, terminal bool, out io.Writer) io.Writer {
+	if logIsDefault && !terminal {
+		return nil
+	}
+	return out
 }

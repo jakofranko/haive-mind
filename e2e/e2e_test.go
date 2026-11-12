@@ -210,7 +210,12 @@ func startServerWith(t *testing.T, flags, env []string) (addr, dataDir, agentLog
 	args := append([]string{
 		"--bind", "127.0.0.1", "--port", port,
 		"--host-key", filepath.Join(t.TempDir(), "host_key"),
-		"--data-dir", dataDir, "--debug"}, flags...)
+		"--data-dir", dataDir,
+		// Naming the log file keeps the default (the user's state directory)
+		// out of the tests, and keeps the server's output on stdout for the
+		// failure report below.
+		"--log-file", filepath.Join(t.TempDir(), "server.log"),
+		"--debug"}, flags...)
 	cmd := exec.Command(filepath.Join(bin, exe("haive-mind")), args...)
 	cmd.Env = append(os.Environ(),
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),

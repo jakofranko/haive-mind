@@ -22,16 +22,32 @@ The server calls the agent by running [`opencode`](https://opencode.ai), so `ope
 
 ```bash
 # Run the server (default port 2222)
-haive-mind --data-dir ./data
+haive-mind
 
 # Accept local connections only (no firewall prompt on Windows)
-haive-mind --data-dir ./data --bind 127.0.0.1
+haive-mind --bind 127.0.0.1
 
 # In separate terminals, connect as host and participants:
 ssh -p 2222 localhost
 ```
 
-Run `haive-mind --help` for all flags (`--port`, `--bind`, `--host-key`, `--data-dir`, `--debug`, `--log-file`, `--agent-timeout`). Without `--host-key`, an `id_ed25519` key is generated in the current directory and reused on later runs.
+Run `haive-mind --help` for all flags (`--port`, `--bind`, `--host-key`, `--data-dir`, `--debug`, `--log-file`, `--agent-timeout`).
+
+### Where files are kept
+
+Nothing is written to the directory you start the server from. Unless you pass a flag, the server uses these locations, each under a `haive-mind` directory:
+
+| What | Flag | Linux | Windows | macOS |
+| --- | --- | --- | --- | --- |
+| Saved transcripts | `--data-dir` | `~/.local/share` | `%LocalAppData%` | `~/Library/Application Support` |
+| SSH host key (`id_ed25519`, generated on first run) | `--host-key` | same as transcripts | same as transcripts | same as transcripts |
+| Log file (`haive-mind.log`, JSON) | `--log-file` | `~/.local/state` | `%LocalAppData%` | `~/Library/Logs` |
+
+On every platform, an absolute `XDG_DATA_HOME` or `XDG_STATE_HOME` replaces the base directory for data or logs. Each flag moves only its own item. Transcripts are always saved: on shutdown, and on each export from the host.
+
+Logs go to the log file; they are also printed to the terminal when the server is run from one. If you pass `--log-file`, logs are printed as well as written.
+
+The server now keeps the host key in the data directory instead of the current directory. If you ran an earlier version, an `id_ed25519` in the directory you started it from is no longer used: clients will see a new host key, and you can pass `--host-key ./id_ed25519` to keep the old one.
 
 **Who is the host?** The first SSH connection becomes the host, whatever its SSH username, and it is registered as the participant `host`. Everyone who connects while a host session is live is a participant. The role is freed when the host's session ends, so whoever connects next becomes the host. SSH usernames are not authenticated, so this suits a single trusted group: start the host session yourself before sharing the address.
 

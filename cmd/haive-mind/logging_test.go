@@ -79,3 +79,43 @@ func TestLogger_UnwritableLogFileIsAnError(t *testing.T) {
 		t.Fatal("want an error for an unwritable log file")
 	}
 }
+
+// With no stdout (the server was started with output going nowhere useful) the
+// log file is still written, and logging does not fail.
+func TestLogger_WithoutStdoutStillWritesTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "haive.log")
+
+	logger, closeLog, err := newLogger(path, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger.Info("participant joined", "name", "alice")
+	closeLog()
+
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), "alice") {
+		t.Errorf("log file lacks the event: %q", b)
+	}
+}
+
+// Logs also go to stdout when someone is watching it (a terminal), or when the
+// user named the log file themselves. Only the default log file, with stdout
+// piped or redirected, keeps stdout quiet.
+func TestLogStdout_QuietOnlyForTheDefaultLogFileWithoutATerminal(t *testing.T) {
+	var out bytes.Buffer
+	for _, tc := range []struct {
+		name               string
+		logIsDefault, term bool
+		wantStdout         bool
+	}{
+		{"default file, terminal", true, true, true},
+		{"default file, piped", true, false, false},
+		{"explicit file, terminal", false, true, true},
+		{"explicit file, piped", false, false, true},
+	} {
+		got := logStdout(tc.logIsDefault, tc.term, &out)
+		if (got != nil) != tc.wantStdout {
+			t.Errorf("%s: stdout used = %v, want %v", tc.name, got != nil, tc.wantStdout)
+		}
+	}
+}
