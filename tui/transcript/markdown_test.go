@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // Message bodies are rendered as Markdown, and the header shows the sender's

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // State is the Coordinator's synchronous core: the session state, changed one

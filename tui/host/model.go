@@ -7,13 +7,13 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/host/buttons"
-	"jakofranko/haive-mind/tui/host/directive"
-	"jakofranko/haive-mind/tui/host/participants"
-	"jakofranko/haive-mind/tui/host/toast"
-	"jakofranko/haive-mind/tui/session"
-	"jakofranko/haive-mind/tui/transcript"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/host/buttons"
+	"github.com/jakofranko/haive-mind/tui/host/directive"
+	"github.com/jakofranko/haive-mind/tui/host/participants"
+	"github.com/jakofranko/haive-mind/tui/host/toast"
+	"github.com/jakofranko/haive-mind/tui/session"
+	"github.com/jakofranko/haive-mind/tui/transcript"
 )
 
 const (

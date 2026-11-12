@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/jakofranko/haive-mind/coordinator"
+	"github.com/jakofranko/haive-mind/hub"
 	"github.com/stretchr/testify/assert"
-	"jakofranko/haive-mind/coordinator"
-	"jakofranko/haive-mind/hub"
 )
 
 func TestAppModel_Init(t *testing.T) {

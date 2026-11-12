@@ -2,7 +2,7 @@ package hub
 
 import (
 	"context"
-	"jakofranko/haive-mind/agent"
+	"github.com/jakofranko/haive-mind/agent"
 )
 
 type Subscription interface {

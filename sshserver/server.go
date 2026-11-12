@@ -11,10 +11,10 @@ import (
 	"github.com/charmbracelet/wish/activeterm"
 	"github.com/charmbracelet/wish/bubbletea"
 	"github.com/charmbracelet/wish/logging"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/host"
+	"github.com/jakofranko/haive-mind/tui/participant"
 	"github.com/muesli/termenv"
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/host"
-	"jakofranko/haive-mind/tui/participant"
 )
 
 // NewServer builds the SSH server listening on addr (host:port; an empty host

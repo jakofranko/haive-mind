@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jakofranko/haive-mind/hub"
 	"github.com/stretchr/testify/assert"
-	"jakofranko/haive-mind/hub"
 )
 
 // The SSH server registers the host once on connect; choosing a name renames

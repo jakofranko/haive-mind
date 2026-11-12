@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jakofranko/haive-mind/hub"
 	"github.com/stretchr/testify/assert"
-	"jakofranko/haive-mind/hub"
 )
 
 // A participant who joins late sees the conversation so far, and what comes

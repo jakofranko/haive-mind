@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/session"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/session"
 )
 
 // connectHost is what the SSH server does for the host: the session's client

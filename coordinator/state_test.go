@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"jakofranko/haive-mind/coordinator"
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/coordinator"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // The Coordinator's state behaviour, tested through its synchronous core: each

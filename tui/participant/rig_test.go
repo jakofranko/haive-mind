@@ -7,8 +7,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"jakofranko/haive-mind/coordinator"
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/coordinator"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // serverHub is a started hub with the Coordinator beside it, as the server

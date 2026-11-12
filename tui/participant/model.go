@@ -6,11 +6,11 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/participant/response"
-	"jakofranko/haive-mind/tui/participant/sidebar"
-	"jakofranko/haive-mind/tui/session"
-	"jakofranko/haive-mind/tui/transcript"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/participant/response"
+	"github.com/jakofranko/haive-mind/tui/participant/sidebar"
+	"github.com/jakofranko/haive-mind/tui/session"
+	"github.com/jakofranko/haive-mind/tui/transcript"
 )
 
 const (

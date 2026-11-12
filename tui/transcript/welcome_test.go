@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // Each TUI gives its own welcome; earlier messages from a snapshot go after

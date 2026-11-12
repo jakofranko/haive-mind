@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/coordinator"
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/session"
+	"github.com/jakofranko/haive-mind/coordinator"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/session"
 )
 
 // coordinatedHub is a started hub with the real Coordinator beside it, so

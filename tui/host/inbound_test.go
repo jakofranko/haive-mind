@@ -7,8 +7,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"jakofranko/haive-mind/hub"
-	"jakofranko/haive-mind/tui/session"
+	"github.com/jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/tui/session"
 )
 
 // drainMessages pulls events out of the model the way its Update loop does

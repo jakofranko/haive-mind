@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"jakofranko/haive-mind/coordinator"
-	"jakofranko/haive-mind/hub"
+	"github.com/jakofranko/haive-mind/coordinator"
+	"github.com/jakofranko/haive-mind/hub"
 )
 
 // Adapter tests: the Coordinator on a real hub applies messages in the order

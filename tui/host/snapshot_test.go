@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jakofranko/haive-mind/hub"
 	"github.com/sebdah/goldie/v2"
-	"jakofranko/haive-mind/hub"
 )
 
 func TestSnapshot_FullTUI_TranscriptFocused(t *testing.T) {
