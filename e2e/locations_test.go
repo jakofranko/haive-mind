@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"bytes"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,15 +39,9 @@ func runWithDefaults(t *testing.T, dir, xdg string) (cmd *exec.Cmd, stdout *byte
 	}
 	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
 
-	for i := 0; i < 100; i++ {
-		if c, err := net.Dial("tcp", "127.0.0.1:"+port); err == nil {
-			c.Close()
-			return cmd, stdout, "127.0.0.1:" + port
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf("server never started listening; output:\n%s", stdout)
-	return
+	addr = "127.0.0.1:" + port
+	waitListening(t, addr, stdout)
+	return cmd, stdout, addr
 }
 
 // stop asks the server to shut down and waits for it to finish.
@@ -82,21 +75,31 @@ func filesIn(t *testing.T, dir string) []string {
 	return names
 }
 
-// With no path flags the host key, the transcript and the log file go to the
-// user's data and state directories, nothing is left in the working directory,
-// and the same host key is used wherever the server is started from.
-func TestDefaultLocations_FollowTheUserDirectoriesNotTheWorkingDirectory(t *testing.T) {
+// defaultRun is one server run with no path flags, stopped again, in a fresh
+// working directory.
+type defaultRun struct {
+	workDir string
+	stdout  *bytes.Buffer
+}
+
+func runAndStopWithDefaults(t *testing.T, xdg string) defaultRun {
+	t.Helper()
+	dir := t.TempDir()
+	cmd, stdout, _ := runWithDefaults(t, dir, xdg)
+	stop(t, cmd)
+	return defaultRun{workDir: dir, stdout: stdout}
+}
+
+// With no path flags the host key goes to the user's data directory, private
+// to the user.
+func TestDefaultLocations_HostKeyIsPrivateAndInTheDataDirectory(t *testing.T) {
 	xdg := t.TempDir()
 	dataDir := filepath.Join(xdg, "share", "haive-mind")
-	logFile := filepath.Join(xdg, "state", "haive-mind", "haive-mind.log")
 	keyFile := filepath.Join(dataDir, "id_ed25519")
 
-	firstDir := t.TempDir()
-	cmd, stdout, _ := runWithDefaults(t, firstDir, xdg)
-	stop(t, cmd)
+	runAndStopWithDefaults(t, xdg)
 
-	key, err := os.ReadFile(keyFile)
-	if err != nil {
+	if _, err := os.ReadFile(keyFile); err != nil {
 		t.Fatalf("no host key in the data directory: %v", err)
 	}
 	if runtime.GOOS != "windows" {
@@ -106,27 +109,62 @@ func TestDefaultLocations_FollowTheUserDirectoriesNotTheWorkingDirectory(t *test
 			}
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dataDir, "transcript.json")); err != nil {
+}
+
+func TestDefaultLocations_TranscriptGoesToTheDataDirectory(t *testing.T) {
+	xdg := t.TempDir()
+
+	runAndStopWithDefaults(t, xdg)
+
+	if _, err := os.Stat(filepath.Join(xdg, "share", "haive-mind", "transcript.json")); err != nil {
 		t.Errorf("no transcript saved without --data-dir: %v", err)
 	}
+}
+
+func TestDefaultLocations_LogGoesToTheStateDirectory(t *testing.T) {
+	xdg := t.TempDir()
+
+	runAndStopWithDefaults(t, xdg)
+
+	logFile := filepath.Join(xdg, "state", "haive-mind", "haive-mind.log")
 	if b, err := os.ReadFile(logFile); err != nil || len(b) == 0 {
 		t.Errorf("no log written to the default log file: %v", err)
 	}
-	if got := filesIn(t, firstDir); len(got) != 0 {
+}
+
+func TestDefaultLocations_LeaveTheWorkingDirectoryEmpty(t *testing.T) {
+	run := runAndStopWithDefaults(t, t.TempDir())
+
+	if got := filesIn(t, run.workDir); len(got) != 0 {
 		t.Errorf("the working directory should stay empty, found %v", got)
 	}
-	if stdout.Len() != 0 {
-		t.Errorf("stdout is not a terminal, so logs should only go to the file, got:\n%s", stdout)
+}
+
+func TestDefaultLocations_StdoutStaysQuietWhenNotATerminal(t *testing.T) {
+	run := runAndStopWithDefaults(t, t.TempDir())
+
+	if run.stdout.Len() != 0 {
+		t.Errorf("stdout is not a terminal, so logs should only go to the file, got:\n%s", run.stdout)
+	}
+}
+
+func TestDefaultLocations_AnotherWorkingDirectoryReusesTheHostKey(t *testing.T) {
+	xdg := t.TempDir()
+	keyFile := filepath.Join(xdg, "share", "haive-mind", "id_ed25519")
+
+	runAndStopWithDefaults(t, xdg)
+	key, err := os.ReadFile(keyFile)
+	if err != nil {
+		t.Fatalf("no host key in the data directory: %v", err)
 	}
 
-	secondDir := t.TempDir()
-	cmd, _, _ = runWithDefaults(t, secondDir, xdg)
-	stop(t, cmd)
+	second := runAndStopWithDefaults(t, xdg)
+
 	again, err := os.ReadFile(keyFile)
 	if err != nil || !bytes.Equal(key, again) {
 		t.Errorf("a server started from another directory should reuse the host key (err %v)", err)
 	}
-	if got := filesIn(t, secondDir); len(got) != 0 {
+	if got := filesIn(t, second.workDir); len(got) != 0 {
 		t.Errorf("the working directory should stay empty, found %v", got)
 	}
 }

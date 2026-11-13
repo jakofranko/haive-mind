@@ -41,14 +41,14 @@ func main() {
 	flag.Parse()
 
 	home, _ := os.UserHomeDir() // empty when unknown; resolveLocations then needs XDG variables
-	loc, err := resolveLocations(*hostKey, *dataDir, *logFile, os.Getenv, runtime.GOOS, home)
+	loc, err := resolveLocations(*hostKey, *dataDir, *logFile, userEnv{getenv: os.Getenv, goos: runtime.GOOS, home: home})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "haive-mind:", err)
 		os.Exit(1)
 	}
 	*hostKey, *dataDir = loc.HostKey, loc.DataDir
 
-	setupLogging(loc.LogFile, *debug, logStdout(loc.LogIsDefault, isTerminal(os.Stdout), os.Stdout))
+	setupLogging(loc.LogFile, *debug, logStdout(*logFile == "", isTerminal(os.Stdout), os.Stdout))
 	slog.Info("Debug flag value", "value", *debug)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
