@@ -57,3 +57,60 @@ func TestHost_EscDiscardsDraft(t *testing.T) {
 		assert.Equal(t, hub.MessageTypeDirective, got[0].Type)
 	}
 }
+
+// inRound2 is a host that has seen round 2 begin.
+func inRound2(t *testing.T) (*AppModel, hub.Hub, func() []*hub.Message) {
+	t.Helper()
+	h, _ := serverHub(t)
+	m := joinHost(t, h)
+	sent := recordSent(t, h, hub.MessageTypeAggregate, hub.MessageTypeDirective)
+	h.StartRound(1)
+	m = receiveUntil(t, m, shows("Round 2"))
+	return m, h, sent
+}
+
+// A Stale draft joins the transcript with its round; the input, focus and
+// aggregate mode stay as they were, so Enter keeps its meaning.
+func TestHost_StaleDraftIsOnlyInTheTranscript(t *testing.T) {
+	m, h, sent := inRound2(t)
+	m = press(press(m, tea.KeyTab), tea.KeyTab) // focus the input
+	m = typeText(m, "my directive")
+	pane := m.activePane
+
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "old round draft", 1))
+	m = receiveUntil(t, m, shows("old round draft"))
+
+	assert.Contains(t, visible(m.View()), "Round 1")
+	assert.Equal(t, "my directive", m.directive.Value())
+	assert.Equal(t, pane, m.activePane)
+
+	press(m, tea.KeyEnter)
+	got := sent()
+	if assert.Len(t, got, 1) {
+		assert.Equal(t, hub.MessageTypeDirective, got[0].Type)
+		assert.Equal(t, "my directive", got[0].Content)
+	}
+}
+
+func TestHost_StaleDraftLeavesAnEmptyInputEmpty(t *testing.T) {
+	m, h, _ := inRound2(t)
+
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "old round draft", 1))
+	m = receiveUntil(t, m, shows("old round draft"))
+
+	assert.Equal(t, "", m.directive.Value())
+	assert.False(t, m.draftingAggregate)
+}
+
+// A second Draft in the current round replaces the input; both stay shown.
+func TestHost_SecondCurrentDraftReplacesTheInput(t *testing.T) {
+	m, h, _ := inRound2(t)
+
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "first draft", 2))
+	m = receiveUntil(t, m, shows("first draft"))
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "second draft", 2))
+	m = receiveUntil(t, m, func(s string) bool { return m.directive.Value() == "second draft" })
+
+	assert.Equal(t, "second draft", m.directive.Value())
+	assert.Contains(t, visible(m.View()), "first draft")
+}

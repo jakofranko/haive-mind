@@ -46,6 +46,10 @@ type AppModel struct {
 	// aggregate for the host to edit; Enter then sends it as the aggregate.
 	draftingAggregate bool
 
+	// round is the round the host last learned from Round state and Round
+	// change events; a Draft for an earlier round is a Stale draft.
+	round int
+
 	// The session's conversation with the hub: it knows the round and sends
 	// on the host's behalf.
 	client *session.Host
@@ -153,13 +157,16 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 	case session.CatchUpEvent:
 		m.transcript.PrependMessages(ev.Messages)
 		m.participants.SetParticipants(ev.Participants)
+		m.round = ev.Round
 		m.participants.SetRound(ev.Round)
 		m.participants.SetFlagged(ev.Flagged)
 	case session.MessageEvent:
 		m.transcript.AddMessage(ev.Message)
 	case session.DraftEvent:
 		m.transcript.AddMessage(ev.Message)
-		m.openDraft(ev.Message.Content)
+		if ev.Message.Round >= m.round { // a Stale draft only joins the transcript
+			m.openDraft(ev.Message.Content)
+		}
 	case session.AgentFailedEvent:
 		return m.showAgentError(ev)
 	case session.ParticipantEvent:
@@ -169,6 +176,7 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 			m.participants.UpdateParticipant(*ev.Participant)
 		}
 	case session.RoundEvent:
+		m.round = ev.Round
 		m.participants.SetRound(ev.Round)
 		m.participants.SetFlagged(ev.Flagged)
 	case session.ExportEvent:
