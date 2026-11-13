@@ -35,9 +35,7 @@ func requireMentions(t *testing.T, err error, wants ...string) {
 // An absolute XDG_DATA_HOME / XDG_STATE_HOME decides where the data and the
 // logs go, under a haive-mind directory.
 func TestDefaultDirs_HonoursAbsoluteXDGVariables(t *testing.T) {
-	data := filepath.Join(t.TempDir(), "share")
-	state := filepath.Join(t.TempDir(), "state")
-	env := linuxUser(map[string]string{"XDG_DATA_HOME": data, "XDG_STATE_HOME": state})
+	env, data, state := xdgEnv(t)
 
 	gotData, gotLogs := defaultDirs(env)
 	if want := filepath.Join(data, "haive-mind"); gotData != want {

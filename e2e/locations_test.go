@@ -90,9 +90,8 @@ func runAndStopWithDefaults(t *testing.T, xdg string) defaultRun {
 	return defaultRun{workDir: dir, stdout: stdout}
 }
 
-// With no path flags the host key, the transcript and the log file go to the
-// user's data and state directories, nothing is left in the working directory,
-// and the same host key is used wherever the server is started from.
+// With no path flags the host key goes to the user's data directory, private
+// to the user.
 func TestDefaultLocations_HostKeyIsPrivateAndInTheDataDirectory(t *testing.T) {
 	xdg := t.TempDir()
 	dataDir := filepath.Join(xdg, "share", "haive-mind")
