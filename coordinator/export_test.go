@@ -111,3 +111,31 @@ func TestExport_FailedWriteSendsNoCompletion(t *testing.T) {
 		t.Errorf("%d export_complete messages after a failed write, want 0", got)
 	}
 }
+
+// A Draft from an earlier round (a Stale draft, to the host) is exported with
+// the round it summarizes.
+func TestExport_IncludesAnEarlierRoundsDraftWithItsRound(t *testing.T) {
+	h, c, _ := newRig(t)
+	w := &exportWriter{}
+	c.SetExportWriter(w.write)
+
+	h.StartRound(1)
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "round one draft", 1))
+	if err := h.Export("transcript.json"); err != nil {
+		t.Fatal(err)
+	}
+
+	eventually(t, "the writer called", func() bool { return len(w.all()) == 1 })
+	var found bool
+	for _, m := range w.all()[0].transcript {
+		if m.Type == hub.MessageTypeAggregateDraft && m.Content == "round one draft" {
+			found = true
+			if m.Round != 1 {
+				t.Errorf("draft exported with round %d, want 1", m.Round)
+			}
+		}
+	}
+	if !found {
+		t.Error("the stale draft is not in the export")
+	}
+}

@@ -3,10 +3,12 @@ package host
 import (
 	"context"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jakofranko/haive-mind/hub"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // hostWithDraft is a host whose input has just been given a synthesized draft.
@@ -113,4 +115,44 @@ func TestHost_SecondCurrentDraftReplacesTheInput(t *testing.T) {
 
 	assert.Equal(t, "second draft", m.directive.Value())
 	assert.Contains(t, visible(m.View()), "first draft")
+}
+
+// After a Stale draft arrives, Enter still sends the open current Draft as
+// the aggregate, never the stale text.
+func TestHost_StaleDraftDoesNotReplaceAnOpenCurrentDraft(t *testing.T) {
+	m, h, sent := inRound2(t)
+
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "current draft", 2))
+	m = receiveUntil(t, m, shows("current draft"))
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "stale draft", 1))
+	m = receiveUntil(t, m, shows("stale draft"))
+
+	assert.Equal(t, "current draft", m.directive.Value())
+	assert.True(t, m.draftingAggregate)
+
+	press(m, tea.KeyEnter)
+	got := sent()
+	if assert.Len(t, got, 1) {
+		assert.Equal(t, hub.MessageTypeAggregate, got[0].Type)
+		assert.Equal(t, "current draft", got[0].Content)
+	}
+}
+
+// A Draft the hub replays through Catch-up is history: it is in the
+// transcript and the input is left alone.
+func TestHost_DraftReplayedByCatchUpDoesNotOpen(t *testing.T) {
+	h, c := serverHub(t)
+	h.Send(context.Background(), hub.NewMessage(hub.MessageTypeAggregateDraft, "synthesizer", "earlier draft", 1))
+	require.Eventually(t, func() bool { return len(c.Transcript()) > 0 }, 5*time.Second, 10*time.Millisecond)
+
+	// Sized before Catch-up arrives, so the transcript renders what it is given.
+	m := NewAppModel(h)
+	t.Cleanup(m.Close)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 60})
+	m = updated.(*AppModel)
+	h.RegisterParticipant(hub.NewParticipantEvent(hub.HostID, "TestHost", hub.StatusIdle, hub.ParticipantEventConnect))
+	m = receiveUntil(t, m, shows("earlier draft"))
+
+	assert.Equal(t, "", m.directive.Value())
+	assert.False(t, m.draftingAggregate)
 }
