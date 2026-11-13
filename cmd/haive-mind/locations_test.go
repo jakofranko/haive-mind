@@ -12,14 +12,34 @@ func envOf(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
 
+// userOf is a user on goos with the given home directory and environment.
+func userOf(goos, home string, vars map[string]string) userEnv {
+	return userEnv{getenv: envOf(vars), goos: goos, home: home}
+}
+
+// linuxUser is a Linux user "ann" whose XDG variables are vars.
+func linuxUser(vars map[string]string) userEnv {
+	return userOf("linux", "/home/ann", vars)
+}
+
+// requireMentions fails the test unless err's message contains every want.
+func requireMentions(t *testing.T, err error, wants ...string) {
+	t.Helper()
+	for _, want := range wants {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
 // An absolute XDG_DATA_HOME / XDG_STATE_HOME decides where the data and the
 // logs go, under a haive-mind directory.
 func TestDefaultDirs_HonoursAbsoluteXDGVariables(t *testing.T) {
 	data := filepath.Join(t.TempDir(), "share")
 	state := filepath.Join(t.TempDir(), "state")
-	env := envOf(map[string]string{"XDG_DATA_HOME": data, "XDG_STATE_HOME": state})
+	env := linuxUser(map[string]string{"XDG_DATA_HOME": data, "XDG_STATE_HOME": state})
 
-	gotData, gotLogs := defaultDirs(env, "linux", "/home/ann")
+	gotData, gotLogs := defaultDirs(env)
 	if want := filepath.Join(data, "haive-mind"); gotData != want {
 		t.Errorf("data dir = %q, want %q", gotData, want)
 	}
@@ -38,7 +58,7 @@ func TestDefaultDirs_IgnoresUnusableXDGVariablesOnLinux(t *testing.T) {
 		"relative": {"XDG_DATA_HOME": "share", "XDG_STATE_HOME": "./state"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			gotData, gotLogs := defaultDirs(envOf(vars), "linux", home)
+			gotData, gotLogs := defaultDirs(userOf("linux", home, vars))
 			if want := filepath.Join(home, ".local", "share", "haive-mind"); gotData != want {
 				t.Errorf("data dir = %q, want %q", gotData, want)
 			}
@@ -53,9 +73,9 @@ func TestDefaultDirs_IgnoresUnusableXDGVariablesOnLinux(t *testing.T) {
 // directory under %LocalAppData%.
 func TestDefaultDirs_WindowsUsesLocalAppData(t *testing.T) {
 	local := filepath.Join(t.TempDir(), "Local")
-	env := envOf(map[string]string{"LOCALAPPDATA": local})
+	env := userOf("windows", filepath.Join(t.TempDir(), "ann"), map[string]string{"LOCALAPPDATA": local})
 
-	gotData, gotLogs := defaultDirs(env, "windows", filepath.Join(t.TempDir(), "ann"))
+	gotData, gotLogs := defaultDirs(env)
 	want := filepath.Join(local, "haive-mind")
 	if gotData != want || gotLogs != want {
 		t.Errorf("data dir = %q, log dir = %q, want both %q", gotData, gotLogs, want)
@@ -67,7 +87,7 @@ func TestDefaultDirs_WindowsUsesLocalAppData(t *testing.T) {
 func TestDefaultDirs_MacOSUsesLibrary(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "ann")
 
-	gotData, gotLogs := defaultDirs(envOf(nil), "darwin", home)
+	gotData, gotLogs := defaultDirs(userOf("darwin", home, nil))
 	if want := filepath.Join(home, "Library", "Application Support", "haive-mind"); gotData != want {
 		t.Errorf("data dir = %q, want %q", gotData, want)
 	}
@@ -80,22 +100,22 @@ func TestDefaultDirs_MacOSUsesLibrary(t *testing.T) {
 // directory) there is no default: the answer is empty, never a path relative to
 // the working directory. An XDG variable alone is enough when it is set.
 func TestDefaultDirs_NoHomeMeansNoDefaultUnlessXDGIsSet(t *testing.T) {
-	if data, logs := defaultDirs(envOf(nil), "linux", ""); data != "" || logs != "" {
+	if data, logs := defaultDirs(userOf("linux", "", nil)); data != "" || logs != "" {
 		t.Errorf("no XDG variables and no home: got %q and %q, want no defaults", data, logs)
 	}
 
 	data, state := t.TempDir(), t.TempDir()
-	env := envOf(map[string]string{"XDG_DATA_HOME": data, "XDG_STATE_HOME": state})
-	gotData, gotLogs := defaultDirs(env, "linux", "")
+	env := userOf("linux", "", map[string]string{"XDG_DATA_HOME": data, "XDG_STATE_HOME": state})
+	gotData, gotLogs := defaultDirs(env)
 	if gotData != filepath.Join(data, "haive-mind") || gotLogs != filepath.Join(state, "haive-mind") {
 		t.Errorf("XDG variables set, no home: got %q and %q", gotData, gotLogs)
 	}
 }
 
-func xdgEnv(t *testing.T) (env func(string) string, data, state string) {
+func xdgEnv(t *testing.T) (env userEnv, data, state string) {
 	t.Helper()
 	data, state = filepath.Join(t.TempDir(), "share"), filepath.Join(t.TempDir(), "state")
-	return envOf(map[string]string{"XDG_DATA_HOME": data, "XDG_STATE_HOME": state}), data, state
+	return linuxUser(map[string]string{"XDG_DATA_HOME": data, "XDG_STATE_HOME": state}), data, state
 }
 
 // With no path flags, the host key and transcripts go to the data directory,
@@ -103,16 +123,15 @@ func xdgEnv(t *testing.T) (env func(string) string, data, state string) {
 func TestResolveLocations_DefaultsWhenNoFlagsAreGiven(t *testing.T) {
 	env, data, state := xdgEnv(t)
 
-	got, err := resolveLocations("", "", "", env, "linux", "/home/ann")
+	got, err := resolveLocations("", "", "", env)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dataDir := filepath.Join(data, "haive-mind")
 	want := locations{
-		HostKey:      filepath.Join(dataDir, "id_ed25519"),
-		DataDir:      dataDir,
-		LogFile:      filepath.Join(state, "haive-mind", "haive-mind.log"),
-		LogIsDefault: true,
+		HostKey: filepath.Join(dataDir, "id_ed25519"),
+		DataDir: dataDir,
+		LogFile: filepath.Join(state, "haive-mind", "haive-mind.log"),
 	}
 	if got != want {
 		t.Errorf("locations = %+v, want %+v", got, want)
@@ -124,40 +143,46 @@ func TestResolveLocations_DefaultsWhenNoFlagsAreGiven(t *testing.T) {
 	}
 }
 
-// Each flag replaces only its own item; the rest keep their defaults. A path
-// the user gave is used as is, and a default directory nobody needs is not
-// created.
-func TestResolveLocations_EachFlagOverridesOnlyItsOwnItem(t *testing.T) {
+// Each flag replaces only its own item; the rest keep their defaults, and a
+// path the user gave is used as is.
+func TestResolveLocations_AFlagOverridesOnlyItsOwnItem(t *testing.T) {
 	env, data, state := xdgEnv(t)
 	dataDir := filepath.Join(data, "haive-mind")
 	logDir := filepath.Join(state, "haive-mind")
 	mine := t.TempDir()
 
-	got, err := resolveLocations("", filepath.Join(mine, "transcripts"), "", env, "linux", "/home/ann")
+	got, err := resolveLocations("", filepath.Join(mine, "transcripts"), "", env)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.DataDir != filepath.Join(mine, "transcripts") {
 		t.Errorf("data dir = %q, want the flag's", got.DataDir)
 	}
-	if got.HostKey != filepath.Join(dataDir, "id_ed25519") || got.LogFile != filepath.Join(logDir, "haive-mind.log") || !got.LogIsDefault {
+	if got.HostKey != filepath.Join(dataDir, "id_ed25519") || got.LogFile != filepath.Join(logDir, "haive-mind.log") {
 		t.Errorf("host key and log file should stay default: %+v", got)
-	}
-
-	all, err := resolveLocations(filepath.Join(mine, "key"), filepath.Join(mine, "d"), filepath.Join(mine, "x.log"), env, "linux", "/home/ann")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if all.HostKey != filepath.Join(mine, "key") || all.DataDir != filepath.Join(mine, "d") || all.LogFile != filepath.Join(mine, "x.log") || all.LogIsDefault {
-		t.Errorf("all flags given, want them used as is: %+v", all)
 	}
 }
 
+func TestResolveLocations_AllFlagsGivenAreUsedAsIs(t *testing.T) {
+	env, _, _ := xdgEnv(t)
+	mine := t.TempDir()
+
+	all, err := resolveLocations(filepath.Join(mine, "key"), filepath.Join(mine, "d"), filepath.Join(mine, "x.log"), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := locations{HostKey: filepath.Join(mine, "key"), DataDir: filepath.Join(mine, "d"), LogFile: filepath.Join(mine, "x.log")}
+	if all != want {
+		t.Errorf("all flags given, want them used as is: %+v, want %+v", all, want)
+	}
+}
+
+// A default directory nobody needs is not created.
 func TestResolveLocations_CreatesNoDefaultDirectoryItDoesNotNeed(t *testing.T) {
 	env, data, state := xdgEnv(t)
 	mine := t.TempDir()
 
-	if _, err := resolveLocations(filepath.Join(mine, "key"), filepath.Join(mine, "d"), filepath.Join(mine, "x.log"), env, "linux", "/home/ann"); err != nil {
+	if _, err := resolveLocations(filepath.Join(mine, "key"), filepath.Join(mine, "d"), filepath.Join(mine, "x.log"), env); err != nil {
 		t.Fatal(err)
 	}
 	for _, base := range []string{data, state} {
@@ -178,25 +203,17 @@ func TestResolveLocations_UncreatableDefaultNamesTheDirectoryAndFlag(t *testing.
 	blocked := filepath.Join(file, "share") // a directory under a regular file
 	ok := t.TempDir()
 
-	_, err := resolveLocations("", "", "", envOf(map[string]string{"XDG_DATA_HOME": blocked, "XDG_STATE_HOME": ok}), "linux", "/home/ann")
+	_, err := resolveLocations("", "", "", linuxUser(map[string]string{"XDG_DATA_HOME": blocked, "XDG_STATE_HOME": ok}))
 	if err == nil {
 		t.Fatal("want an error for an uncreatable data directory")
 	}
-	for _, want := range []string{filepath.Join(blocked, "haive-mind"), "--data-dir", "--host-key"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %q", err, want)
-		}
-	}
+	requireMentions(t, err, filepath.Join(blocked, "haive-mind"), "--data-dir", "--host-key")
 
-	_, err = resolveLocations("", "x", "", envOf(map[string]string{"XDG_DATA_HOME": ok, "XDG_STATE_HOME": blocked}), "linux", "/home/ann")
+	_, err = resolveLocations("", "x", "", linuxUser(map[string]string{"XDG_DATA_HOME": ok, "XDG_STATE_HOME": blocked}))
 	if err == nil {
 		t.Fatal("want an error for an uncreatable log directory")
 	}
-	for _, want := range []string{filepath.Join(blocked, "haive-mind"), "--log-file"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %q", err, want)
-		}
-	}
+	requireMentions(t, err, filepath.Join(blocked, "haive-mind"), "--log-file")
 }
 
 // The default directories are private to the user.
@@ -206,7 +223,7 @@ func TestResolveLocations_CreatesDefaultDirectoriesPrivate(t *testing.T) {
 	}
 	env, data, state := xdgEnv(t)
 
-	if _, err := resolveLocations("", "", "", env, "linux", "/home/ann"); err != nil {
+	if _, err := resolveLocations("", "", "", env); err != nil {
 		t.Fatal(err)
 	}
 	for _, dir := range []string{filepath.Join(data, "haive-mind"), filepath.Join(state, "haive-mind")} {
@@ -223,25 +240,17 @@ func TestResolveLocations_CreatesDefaultDirectoriesPrivate(t *testing.T) {
 // When a default cannot be placed (no usable XDG variable and no home
 // directory) the error says which setting and flags fix it.
 func TestResolveLocations_NoHomeNamesTheVariableAndFlags(t *testing.T) {
-	_, err := resolveLocations("", "", "", envOf(nil), "linux", "")
+	_, err := resolveLocations("", "", "", userOf("linux", "", nil))
 	if err == nil {
 		t.Fatal("want an error with no home directory")
 	}
-	for _, want := range []string{"XDG_DATA_HOME", "--data-dir", "--host-key"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %q", err, want)
-		}
-	}
+	requireMentions(t, err, "XDG_DATA_HOME", "--data-dir", "--host-key")
 
-	_, err = resolveLocations("k", "d", "", envOf(nil), "linux", "")
+	_, err = resolveLocations("k", "d", "", userOf("linux", "", nil))
 	if err == nil {
 		t.Fatal("want an error for the log file with no home directory")
 	}
-	for _, want := range []string{"XDG_STATE_HOME", "--log-file"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %q", err, want)
-		}
-	}
+	requireMentions(t, err, "XDG_STATE_HOME", "--log-file")
 }
 
 // A default that nobody needs is never resolved, so a missing home directory
@@ -250,7 +259,7 @@ func TestResolveLocations_NoHomeIsFineWhenTheNeededDefaultsAreSet(t *testing.T) 
 	state := t.TempDir()
 	mine := t.TempDir()
 
-	got, err := resolveLocations(filepath.Join(mine, "key"), filepath.Join(mine, "d"), "", envOf(map[string]string{"XDG_STATE_HOME": state}), "linux", "")
+	got, err := resolveLocations(filepath.Join(mine, "key"), filepath.Join(mine, "d"), "", userOf("linux", "", map[string]string{"XDG_STATE_HOME": state}))
 	if err != nil {
 		t.Fatalf("data dir and host key given, only the log default needed: %v", err)
 	}

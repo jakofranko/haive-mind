@@ -238,15 +238,26 @@ func startServerWith(t *testing.T, flags, env []string) (addr, dataDir, agentLog
 
 	addr = "127.0.0.1:" + port
 	servers.Store(addr, cmd)
+	waitListening(t, addr, nil)
+	return addr, dataDir, agentLog
+}
+
+// waitListening returns once something accepts connections at addr, and fails
+// the test if nothing does in time. out, when not nil, is the server's output,
+// shown in the failure.
+func waitListening(t *testing.T, addr string, out fmt.Stringer) {
+	t.Helper()
 	for i := 0; i < 100; i++ {
 		if c, err := net.Dial("tcp", addr); err == nil {
 			c.Close()
-			return addr, dataDir, agentLog
+			return
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	if out != nil {
+		t.Fatalf("server never started listening; output:\n%s", out)
+	}
 	t.Fatal("server never started listening")
-	return
 }
 
 // joinAs completes the first-connect display-name prompt.
