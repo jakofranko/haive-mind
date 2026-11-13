@@ -177,7 +177,7 @@ func TestParticipantCatchUp_IgnoresSomeoneElsesSnapshot(t *testing.T) {
 
 	h.Send(ctx, hub.NewTranscriptSnapshot(1, "Agent-bob", []*hub.Message{secret}, secret))
 	h.Send(ctx, hub.NewTranscriptSnapshot(1, me, nil, nil))
-	h.Send(ctx, hub.NewRoundState(1, []string{me}))
+	h.Send(ctx, hub.NewRoundState(1, []string{me}, nil))
 
 	if ev := expect[session.CatchUpEvent](t, p); len(ev.Messages) != 0 {
 		t.Errorf("Messages = %q, want none", contents(ev.Messages))
@@ -194,7 +194,7 @@ func TestParticipantRevision_EitherArrivalOrder(t *testing.T) {
 	last := hub.NewMessage(hub.MessageTypeResponse, "Ann", "use postgres", 1)
 	last.FromID = me
 	snapshot := func() *hub.Message { return hub.NewTranscriptSnapshot(1, me, nil, last) }
-	flagged := func() *hub.Message { return hub.NewRoundState(1, []string{me}) }
+	flagged := func() *hub.Message { return hub.NewRoundState(1, []string{me}, nil) }
 
 	for name, order := range map[string][]func() *hub.Message{
 		"round state first": {flagged, snapshot},
@@ -275,7 +275,7 @@ func TestParticipantRevision_AnswerSentBeforeCatchUpIsKept(t *testing.T) {
 
 	p.Submit("use postgres")
 	h.Send(context.Background(), hub.NewTranscriptSnapshot(1, me, nil, nil))
-	h.Send(context.Background(), hub.NewRoundState(1, []string{me}))
+	h.Send(context.Background(), hub.NewRoundState(1, []string{me}, nil))
 
 	if rev := until[session.RevisionEvent](t, p); rev.LastAnswer != "use postgres" {
 		t.Errorf("LastAnswer = %q, want the answer sent before Catch-up", rev.LastAnswer)

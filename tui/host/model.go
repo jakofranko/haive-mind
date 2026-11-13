@@ -160,6 +160,7 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 		m.round = ev.Round
 		m.participants.SetRound(ev.Round)
 		m.participants.SetFlagged(ev.Flagged)
+		m.participants.SetPending(ev.Pending)
 	case session.MessageEvent:
 		m.transcript.AddMessage(ev.Message)
 	case session.DraftEvent:
@@ -179,6 +180,7 @@ func (m *AppModel) reduce(ev session.Event) tea.Cmd {
 		m.round = ev.Round
 		m.participants.SetRound(ev.Round)
 		m.participants.SetFlagged(ev.Flagged)
+		m.participants.SetPending(ev.Pending)
 	case session.ExportEvent:
 		m.transcript.AddSystemMessage("Exported to " + ev.Path)
 	}

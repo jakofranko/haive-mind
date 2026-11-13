@@ -54,7 +54,7 @@ func roundStateOf(t *testing.T, m *hub.Message) (int, string) {
 	if m.Type != hub.MessageTypeRoundState {
 		t.Fatalf("got %s, want a round state", m.Type)
 	}
-	round, ids, err := m.RoundState()
+	round, ids, _, err := m.RoundState()
 	if err != nil {
 		t.Fatalf("round state content %q: %v", m.Content, err)
 	}

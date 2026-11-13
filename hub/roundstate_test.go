@@ -8,17 +8,17 @@ import (
 )
 
 func TestRoundState_RoundAndFlaggedIDsRoundTrip(t *testing.T) {
-	m := NewRoundState(2, []string{"Agent-alice", "Agent-bob"})
+	m := NewRoundState(2, []string{"Agent-alice", "Agent-bob"}, nil)
 	assert.Equal(t, MessageTypeRoundState, m.Type)
 
-	round, ids, err := m.RoundState()
+	round, ids, _, err := m.RoundState()
 	require.NoError(t, err)
 	assert.Equal(t, 2, round)
 	assert.Equal(t, []string{"Agent-alice", "Agent-bob"}, ids)
 }
 
 func TestRoundState_EmptySetDecodesToNoIDs(t *testing.T) {
-	round, ids, err := NewRoundState(1, nil).RoundState()
+	round, ids, _, err := NewRoundState(1, nil, nil).RoundState()
 	require.NoError(t, err)
 	assert.Equal(t, 1, round)
 	assert.Empty(t, ids)
@@ -26,6 +26,6 @@ func TestRoundState_EmptySetDecodesToNoIDs(t *testing.T) {
 
 func TestRoundState_RejectsMalformedContent(t *testing.T) {
 	m := NewMessage(MessageTypeRoundState, "hub", "not json", 1)
-	_, _, err := m.RoundState()
+	_, _, _, err := m.RoundState()
 	assert.Error(t, err)
 }

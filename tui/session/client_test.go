@@ -142,7 +142,7 @@ func TestRoundEventsKeepSendOrder(t *testing.T) {
 	ctx := context.Background()
 
 	h.Send(ctx, msg(hub.MessageTypeSystem, "before"))
-	h.Send(ctx, hub.NewRoundState(2, []string{"Agent-a", "Agent-b"}))
+	h.Send(ctx, hub.NewRoundState(2, []string{"Agent-a", "Agent-b"}, nil))
 	h.Send(ctx, hub.NewMessage(hub.MessageTypeRoundChange, "hub", "", 3))
 
 	expect[session.MessageEvent](t, c)

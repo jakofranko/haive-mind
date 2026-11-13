@@ -130,6 +130,7 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 		m.sidebar.SetParticipants(ev.Participants)
 		m.sidebar.SetRound(ev.Round)
 		m.sidebar.SetFlagged(ev.Flagged)
+		m.sidebar.SetPending(ev.Pending)
 	case session.MessageEvent:
 		m.transcript.AddMessage(ev.Message)
 	case session.ParticipantEvent:
@@ -141,6 +142,7 @@ func (m *ParticipantModel) reduce(ev session.Event) {
 	case session.RoundEvent:
 		m.sidebar.SetRound(ev.Round)
 		m.sidebar.SetFlagged(ev.Flagged)
+		m.sidebar.SetPending(ev.Pending)
 	case session.RevisionEvent:
 		m.transcript.AddSystemMessage("The host asked you to revise your response.")
 		// Their last answer comes back to edit, unless they are already typing.

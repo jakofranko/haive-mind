@@ -19,6 +19,7 @@ type CatchUpEvent struct {
 	Round        int
 	Flagged      []string
 	Participants []hub.Participant
+	Pending      []hub.PendingCall
 }
 
 // RevisionEvent is the host asking this participant to revise. It comes once
@@ -65,6 +66,7 @@ type core struct {
 	held     []*hub.Message // what arrived before the snapshot
 	round    int
 	flagged  []string
+	pending  []hub.PendingCall
 }
 
 func newCore(h hub.Hub, id string, hooks roleHooks) *core {
@@ -131,8 +133,8 @@ func (c *core) catchUp(snapshot *hub.Message) {
 		case hub.MessageTypeRoundChange:
 			c.round, c.flagged = m.Round, nil
 		case hub.MessageTypeRoundState:
-			if round, ids, err := m.RoundState(); err == nil {
-				c.round, c.flagged = round, ids
+			if round, ids, pending, err := m.RoundState(); err == nil {
+				c.round, c.flagged, c.pending = round, ids, pending
 			}
 		case hub.MessageTypeParticipantEvent:
 			// The roster below is read after it, so it already says this.
@@ -155,6 +157,7 @@ func (c *core) catchUp(snapshot *hub.Message) {
 
 	ev.Round = c.round
 	ev.Flagged = append([]string{}, c.flagged...)
+	ev.Pending = append([]hub.PendingCall{}, c.pending...)
 	for _, p := range c.hub.GetParticipants() {
 		ev.Participants = append(ev.Participants, *p)
 	}
@@ -174,15 +177,15 @@ func (c *core) apply(msg *hub.Message) {
 	case hub.MessageTypeRoundChange:
 		c.round, c.flagged = msg.Round, nil
 		c.hooks.roundChanged()
-		c.inbox.Push(RoundEvent{Round: c.round, Flagged: []string{}})
+		c.inbox.Push(RoundEvent{Round: c.round, Flagged: []string{}, Pending: append([]hub.PendingCall{}, c.pending...)})
 	case hub.MessageTypeRoundState:
-		round, ids, err := msg.RoundState()
+		round, ids, pending, err := msg.RoundState()
 		if err != nil {
 			return
 		}
-		c.round, c.flagged = round, ids
+		c.round, c.flagged, c.pending = round, ids, pending
 		follow := c.hooks.flagsSet()
-		c.inbox.Push(RoundEvent{Round: c.round, Flagged: append([]string{}, ids...)})
+		c.inbox.Push(RoundEvent{Round: c.round, Flagged: append([]string{}, ids...), Pending: append([]hub.PendingCall{}, pending...)})
 		c.push(follow)
 	default:
 		if !c.firstSight(msg.ID) {

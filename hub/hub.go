@@ -371,8 +371,10 @@ func (h *hubImpl) invokeSynthesizer(msg *Message) {
 	runner := h.synthesizer
 	h.mu.RUnlock()
 
-	h.runCall("synthesizer", runner, "Synthesis failed: ", msg, func(out string) {
-		h.Send(h.ctx, NewMessage(MessageTypeAggregateDraft, "synthesizer", out, msg.Round))
+	h.runCall("synthesizer", CallSynthesis, runner, "Synthesis failed: ", msg, func(out string, callID string) {
+		draft := NewMessage(MessageTypeAggregateDraft, "synthesizer", out, msg.Round)
+		draft.CallID = callID
+		h.Send(h.ctx, draft)
 	})
 }
 
@@ -381,8 +383,14 @@ func (h *hubImpl) invokeAgent(msg *Message) {
 	runner := h.agentRunner
 	h.mu.RUnlock()
 
-	h.runCall("agent", runner, "Agent error: ", msg, func(out string) {
-		h.Send(h.ctx, NewMessage(MessageTypeAgentReply, "agent", out, msg.Round))
+	kind := CallDirective
+	if msg.Type == MessageTypeAggregate {
+		kind = CallAggregate
+	}
+	h.runCall("agent", kind, runner, "Agent error: ", msg, func(out string, callID string) {
+		reply := NewMessage(MessageTypeAgentReply, "agent", out, msg.Round)
+		reply.CallID = callID
+		h.Send(h.ctx, reply)
 	})
 }
 
@@ -391,11 +399,24 @@ func (h *hubImpl) invokeAgent(msg *Message) {
 // (a system message) and the host (an agent error with a retry). On success it
 // hands the output to publish. Sends after Stop fail with ErrHubStopped, which
 // is why their results are not checked here. A missing runner skips the call.
-func (h *hubImpl) runCall(name string, runner agent.Runner, failurePrefix string, msg *Message, publish func(out string)) {
+//
+// A call that runs is first announced as started, so everyone can show it as
+// pending; its outcome (publish, or the agent error) carries the call's id.
+// runCall runs on the dispatch loop, so the announcement is delivered
+// directly, ahead of anything the call itself sends.
+func (h *hubImpl) runCall(name string, kind CallKind, runner agent.Runner, failurePrefix string, msg *Message, publish func(out string, callID string)) {
 	if runner == nil {
 		slog.Warn("no runner set; skipping call", "call", name, "type", msg.Type)
 		return
 	}
+
+	started := NewCallStarted(kind, msg.Round)
+	callID := started.CallID
+	h.mu.RLock()
+	for _, e := range h.handlers[started.Type] {
+		e.deliver(started)
+	}
+	h.mu.RUnlock()
 
 	h.wg.Add(1)
 	go func() {
@@ -404,10 +425,10 @@ func (h *hubImpl) runCall(name string, runner agent.Runner, failurePrefix string
 		if err != nil {
 			text := failurePrefix + err.Error()
 			h.Send(h.ctx, NewMessage(MessageTypeSystem, "hub", text, msg.Round))
-			h.reportFailure(text, msg)
+			h.reportFailure(text, msg, callID)
 			return
 		}
-		publish(out)
+		publish(out, callID)
 	}()
 }
 
@@ -446,8 +467,9 @@ func (h *hubImpl) GetParticipants() []*Participant {
 }
 
 // reportFailure tells the host a call failed and how to try it again.
-func (h *hubImpl) reportFailure(text string, failed *Message) {
+func (h *hubImpl) reportFailure(text string, failed *Message, callID string) {
 	m := NewMessage(MessageTypeAgentError, "hub", text, failed.Round)
+	m.CallID = callID
 	m.Retry = &Retry{Type: failed.Type, Content: failed.Content}
 	h.Send(h.ctx, m)
 }

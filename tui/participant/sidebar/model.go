@@ -17,6 +17,7 @@ type Model struct {
 	active       bool
 	round        int
 	flagged      map[string]bool // ids the host asked to revise
+	working      []string        // one line per Pending call
 	selfID       string          // participant id of this session
 }
 
@@ -25,6 +26,7 @@ type Styles struct {
 	activeBorder lipgloss.Style
 	title        lipgloss.Style
 	participant  lipgloss.Style
+	workingLine  lipgloss.Style
 	yourSelf     lipgloss.Style
 	statusStyles map[hub.ParticipantStatus]lipgloss.Style
 }
@@ -48,6 +50,7 @@ func defaultStyles() Styles {
 			Foreground(lipgloss.Color("39")).
 			Padding(0, 1),
 		participant: lipgloss.NewStyle().Padding(0, 1),
+		workingLine: lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Italic(true),
 		yourSelf:    selfStyle,
 		statusStyles: map[hub.ParticipantStatus]lipgloss.Style{
 			hub.StatusIdle:      idleStyle,
@@ -125,6 +128,9 @@ func (m Model) View() string {
 		items = append(items, participantStyle.Render(fmt.Sprintf("%s  %s", displayName, status)))
 	}
 
+	for _, c := range m.working {
+		items = append(items, m.styles.participant.Render(m.styles.workingLine.Render(c)))
+	}
 	content := strings.Join(items, "\n")
 	return border.Render(title + "\n" + content)
 }
@@ -176,5 +182,14 @@ func (m *Model) SetFlagged(ids []string) {
 	m.flagged = make(map[string]bool, len(ids))
 	for _, id := range ids {
 		m.flagged[id] = true
+	}
+}
+
+// SetPending shows one "Working" line per Pending call, in the order given.
+// The lines are display only, never part of the transcript.
+func (m *Model) SetPending(calls []hub.PendingCall) {
+	m.working = nil
+	for _, c := range calls {
+		m.working = append(m.working, c.Label())
 	}
 }

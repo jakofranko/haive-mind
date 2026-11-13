@@ -2,6 +2,7 @@ package hub
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"time"
 
@@ -39,6 +40,7 @@ const (
 	MessageTypeUnflag           MessageType = "unflag"
 	MessageTypeResolve          MessageType = "resolve"
 	MessageTypeRoundState       MessageType = "round_state"
+	MessageTypeCallStarted      MessageType = "call_started"
 
 	MessageTypeTranscriptSnapshot MessageType = "transcript_snapshot"
 )
@@ -90,6 +92,10 @@ type Message struct {
 	Round     int       `json:"round"`
 	// Retry, on an agent_error, is the message to send again to retry.
 	Retry *Retry `json:"retry,omitempty"`
+	// CallID, on a call_started and on the outcome of that call (the agent
+	// reply, the draft or the agent error), names the Pending call it starts or
+	// ends. It is never kept in the transcript.
+	CallID string `json:"call_id,omitempty"`
 }
 
 func NewMessage(msgType MessageType, from, content string, round int) *Message {
@@ -122,23 +128,72 @@ func NewResolve(round int) *Message {
 	return NewMessage(MessageTypeResolve, HostID, "", round)
 }
 
-// NewRoundState publishes the current round and the flagged Participant ids.
-func NewRoundState(round int, ids []string) *Message {
+// CallKind says what a Pending call is waiting for.
+type CallKind string
+
+const (
+	CallDirective CallKind = "directive" // the agent's reply to a Directive
+	CallAggregate CallKind = "aggregate" // the agent's reply to an Aggregate
+	CallSynthesis CallKind = "synthesis" // the synthesizer's Draft
+)
+
+// PendingCall is a call to the agent or synthesizer that has not yet answered
+// or failed. ID tells overlapping calls of the same kind and round apart.
+type PendingCall struct {
+	ID    string   `json:"id"`
+	Kind  CallKind `json:"kind"`
+	Round int      `json:"round"`
+}
+
+// Label is what a TUI shows while the call is pending.
+func (c PendingCall) Label() string {
+	if c.Kind == CallSynthesis {
+		return fmt.Sprintf("Synthesizing the round %d aggregate…", c.Round)
+	}
+	return fmt.Sprintf("Waiting for the agent (round %d)…", c.Round)
+}
+
+// NewCallStarted announces that the hub started a call of this kind for round.
+// The call's id is the message's CallID.
+func NewCallStarted(kind CallKind, round int) *Message {
+	m := NewMessage(MessageTypeCallStarted, "hub", string(kind), round)
+	m.CallID = uuid.New().String()
+	return m
+}
+
+// PendingCall is the call a call_started message announces.
+func (m Message) PendingCall() PendingCall {
+	return PendingCall{ID: m.CallID, Kind: CallKind(m.Content), Round: m.Round}
+}
+
+// roundStatePayload is the content of a Round state message.
+type roundStatePayload struct {
+	Flagged []string      `json:"flagged"`
+	Pending []PendingCall `json:"pending"`
+}
+
+// NewRoundState publishes the current round, the flagged Participant ids and
+// the Pending calls.
+func NewRoundState(round int, ids []string, pending []PendingCall) *Message {
 	if ids == nil {
 		ids = []string{}
 	}
-	payload, _ := json.Marshal(ids)
+	if pending == nil {
+		pending = []PendingCall{}
+	}
+	payload, _ := json.Marshal(roundStatePayload{Flagged: ids, Pending: pending})
 	return NewMessage(MessageTypeRoundState, "hub", string(payload), round)
 }
 
 // RoundState returns the whole concept a Round state message carries: the
-// round and the flagged Participant ids. Read both from here rather than
-// reaching into the message's Round field separately.
-func (m Message) RoundState() (round int, ids []string, err error) {
-	if err := json.Unmarshal([]byte(m.Content), &ids); err != nil {
-		return 0, nil, err
+// round, the flagged Participant ids and the Pending calls. Read all of it from
+// here rather than reaching into the message's Round field separately.
+func (m Message) RoundState() (round int, ids []string, pending []PendingCall, err error) {
+	var p roundStatePayload
+	if err := json.Unmarshal([]byte(m.Content), &p); err != nil {
+		return 0, nil, nil, err
 	}
-	return m.Round, ids, nil
+	return m.Round, p.Flagged, p.Pending, nil
 }
 
 // transcriptSnapshot is the payload of a Transcript snapshot message.
