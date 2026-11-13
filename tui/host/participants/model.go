@@ -18,6 +18,7 @@ type Model struct {
 	round        int
 	cursor       int             // selected row
 	flagged      map[string]bool // ids the host asked to revise
+	working      []string        // one line per Pending call
 }
 
 type Styles struct {
@@ -25,6 +26,7 @@ type Styles struct {
 	activeBorder lipgloss.Style
 	title        lipgloss.Style
 	participant  lipgloss.Style
+	workingLine  lipgloss.Style
 	statusStyles map[hub.ParticipantStatus]lipgloss.Style
 	revise       lipgloss.Style
 }
@@ -47,6 +49,7 @@ func defaultStyles() Styles {
 			Foreground(lipgloss.Color("39")).
 			Padding(0, 1),
 		participant: lipgloss.NewStyle().Padding(0, 1),
+		workingLine: lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Italic(true),
 		revise:      lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true),
 		statusStyles: map[hub.ParticipantStatus]lipgloss.Style{
 			hub.StatusIdle:      idleStyle,
@@ -130,6 +133,9 @@ func (m Model) View() string {
 		items = append(items, m.styles.participant.Render(fmt.Sprintf("%s%s%s  %s", marker, prefix, displayName, status)))
 	}
 
+	for _, c := range m.working {
+		items = append(items, m.styles.participant.Render(m.styles.workingLine.Render(c)))
+	}
 	content := strings.Join(items, "\n")
 	return border.Render(title + "\n" + content)
 }
@@ -202,3 +208,12 @@ func (m *Model) Selected() (hub.Participant, bool) {
 
 // IsFlagged reports whether the participant is flagged for revision.
 func (m *Model) IsFlagged(id string) bool { return m.flagged[id] }
+
+// SetPending shows one "Working" line per Pending call, in the order given.
+// The lines are display only, never part of the transcript.
+func (m *Model) SetPending(calls []hub.PendingCall) {
+	m.working = nil
+	for _, c := range calls {
+		m.working = append(m.working, c.Label())
+	}
+}

@@ -113,7 +113,7 @@ A session's end of the conversation with the hub, in both directions. It knows w
 _Avoid_: Listener, subscriber, connection
 
 **Catch-up**:
-The one event a session's TUI gets once its transcript snapshot has arrived: the earlier conversation, the round, who is flagged, who is connected, its own last response and whether it is being asked to revise. Nothing reaches the TUI before it, whatever order the Round state and the Transcript snapshot arrive in.
+The one event a session's TUI gets once its transcript snapshot has arrived: the earlier conversation, the round, who is flagged, which calls are pending, who is connected, its own last response and whether it is being asked to revise. Nothing reaches the TUI before it, whatever order the Round state and the Transcript snapshot arrive in.
 _Avoid_: Sync, replay, Transcript snapshot (that is the message; Catch-up is what the session makes of it)
 
 ### Participant State

@@ -16,7 +16,8 @@ type State struct {
 	round      int
 	responses  map[int][]*hub.Message
 	directives map[int]string
-	flagged    map[string]bool // participant ids the host asked to revise
+	flagged    map[string]bool   // participant ids the host asked to revise
+	pending    []hub.PendingCall // calls started and not yet ended, oldest first
 }
 
 // NewState is the state of a session that has not started: round 1, nothing
@@ -40,6 +41,10 @@ var handledTypes = []hub.MessageType{
 	hub.MessageTypeUnflag,
 	hub.MessageTypeResolve,
 	hub.MessageTypeParticipantEvent,
+	hub.MessageTypeCallStarted,
+	hub.MessageTypeAgentReply,
+	hub.MessageTypeAggregateDraft,
+	hub.MessageTypeAgentError,
 }
 
 // AppliedTypes returns every message type Apply needs to see: the recorded
@@ -57,9 +62,16 @@ func AppliedTypes() []hub.MessageType {
 // Apply applies one hub message and returns the messages to publish, in order.
 func (s *State) Apply(msg *hub.Message) []*hub.Message {
 	if msg.Type.Recorded() {
-		s.transcript = append(s.transcript, msg)
+		s.transcript = append(s.transcript, withoutCallID(msg))
 	}
 	switch msg.Type {
+	case hub.MessageTypeCallStarted:
+		s.pending = append(s.pending, msg.PendingCall())
+		return []*hub.Message{s.roundState()}
+	case hub.MessageTypeAgentReply, hub.MessageTypeAggregateDraft, hub.MessageTypeAgentError:
+		if s.endCall(msg.CallID) {
+			return []*hub.Message{s.roundState()}
+		}
 	case hub.MessageTypeDirective:
 		s.directives[msg.Round] = msg.Content
 	case hub.MessageTypeResponse:
@@ -147,6 +159,11 @@ func (s *State) trackResponse(msg *hub.Message) []*hub.Message {
 // host's confirmed Aggregate is a different message type, so it never lands
 // here: that is what stops the loop.
 func (s *State) aggregateRequest() []*hub.Message {
+	for _, c := range s.pending {
+		if c.Kind == hub.CallSynthesis && c.Round == s.round {
+			return nil // this round's synthesis is already under way
+		}
+	}
 	var lines []string
 	for _, r := range s.responses[s.round] {
 		lines = append(lines, "- "+r.From+": "+r.Content)
@@ -158,9 +175,42 @@ func (s *State) aggregateRequest() []*hub.Message {
 	return []*hub.Message{hub.NewMessage(hub.MessageTypeSynthesisRequest, "hub", prompt, s.round)}
 }
 
-// roundState tells everyone the current round and who is flagged.
+// roundState tells everyone the current round, who is flagged and which calls
+// are pending.
 func (s *State) roundState() *hub.Message {
-	return hub.NewRoundState(s.round, s.Flagged())
+	return hub.NewRoundState(s.round, s.Flagged(), s.Pending())
+}
+
+// endCall drops the Pending call with this id, and only that one, and reports
+// whether there was one.
+func (s *State) endCall(id string) bool {
+	if id == "" {
+		return false
+	}
+	for i, c := range s.pending {
+		if c.ID == id {
+			s.pending = append(s.pending[:i:i], s.pending[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// Pending returns the calls to the agent or synthesizer that have not yet
+// ended, oldest first.
+func (s *State) Pending() []hub.PendingCall {
+	return append([]hub.PendingCall{}, s.pending...)
+}
+
+// withoutCallID is msg as the transcript keeps it: a Pending call is
+// ephemeral, so the id that ended one is not recorded.
+func withoutCallID(msg *hub.Message) *hub.Message {
+	if msg.CallID == "" {
+		return msg
+	}
+	kept := *msg
+	kept.CallID = ""
+	return &kept
 }
 
 // Round returns the current round number.

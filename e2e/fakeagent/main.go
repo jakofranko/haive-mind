@@ -2,6 +2,10 @@
 // It prints AGENTREPLY-<first word of the prompt> so a test can tell which
 // prompt the app sent without depending on the real agent.
 //
+// FAKE_AGENT_SLOW_PROMPT=word makes a call whose prompt starts with that word
+// take FAKE_AGENT_SLOW_FOR (a duration, default 3s) before it answers, to
+// exercise what people see while a call is pending.
+//
 // FAKE_AGENT_HANG_FIRST=N makes the first N calls hang (until killed), to
 // exercise the agent timeout.
 package main
@@ -35,6 +39,13 @@ func main() {
 	}
 	if n, _ := strconv.Atoi(os.Getenv("FAKE_AGENT_HANG_FIRST")); earlierCalls < n {
 		time.Sleep(time.Minute)
+	}
+	if slow := os.Getenv("FAKE_AGENT_SLOW_PROMPT"); slow != "" && slow == word {
+		d, err := time.ParseDuration(os.Getenv("FAKE_AGENT_SLOW_FOR"))
+		if err != nil {
+			d = 3 * time.Second
+		}
+		time.Sleep(d)
 	}
 	fmt.Print("AGENTREPLY-" + word)
 }

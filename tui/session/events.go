@@ -22,11 +22,12 @@ type MessageEvent struct{ Message hub.Message }
 // A disconnect carries Status hub.StatusDisconnected.
 type ParticipantEvent struct{ Participant *hub.Participant }
 
-// RoundEvent says which round it is and who is flagged. It comes for both a
+// RoundEvent says which round it is and who is flagged and which calls are pending. It comes for both a
 // Round change and a Round state; after a Round change no one is flagged.
 type RoundEvent struct {
 	Round   int
 	Flagged []string
+	Pending []hub.PendingCall
 }
 
 // ExportEvent reports a finished transcript export, with the file it went to.
